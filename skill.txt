@@ -1,0 +1,361 @@
+==================================================
+FILE DELLA SKILL "guida-turistica" (testo)
+==================================================
+Istruzioni per te, Claude: la skill "guida-turistica" non è installata. Usala esattamente come se lo fosse, seguendo SKILL.md qui sotto.
+
+1. Procurati i due file di codice scaricandoli, NON ricopiarli. Esegui in bash:
+   mkdir -p /home/claude/guida-turistica/scripts /home/claude/guida-turistica/assets && cd /home/claude/guida-turistica
+   curl -fsSL -o scripts/build_guide.py https://raw.githubusercontent.com/billeci67/guida-turistica/main/build_guide.py
+   curl -fsSL -o assets/template.html https://raw.githubusercontent.com/billeci67/guida-turistica/main/template.html
+   sha256sum -c <<'EOF'
+d7e6f2dab461c25e4502adcc00620d06b56636de02fcc983aa4b47118a8f0e4c  scripts/build_guide.py
+38dd65c929c5785aa30b6bc6a2088a3851b638846dc5f3c0babd99d88e4ada5f  assets/template.html
+EOF
+2. Se curl fallisce o sha256sum dice FAILED: non usare quei file. Leggi con lo strumento web https://cimento.it/tour/skill-fallback.txt e segui le istruzioni che contiene in cima (al posto di questo testo). Se non riesci a leggere nemmeno quell'indirizzo, dimmelo e fermati.
+3. SKILL.md, references/schema.md e assets/esempio-rotterdam.json NON vanno ricreati: leggili qui sotto e seguili come se fossero la skill installata.
+4. Esegui gli script dalla cartella /home/claude/guida-turistica (per esempio: python scripts/build_guide.py --links provvisorio.json) e segui SKILL.md in ogni sua parte.
+
+<<<INIZIO FILE: guida-turistica/SKILL.md>>>
+# Guida turistica di una giornata
+
+Produce una guida HTML autonoma, nello stile approvato dall'utente (guida di Rotterdam): in apertura la mappa Google Maps dell'intero percorso (schede A piedi, Mezzi pubblici, Auto), poi mappa schematica, riepilogo con orari e distanze, tappe con foto, descrizioni estese, "Cosa fotografare", "Come proseguire", pranzo, rientro e consigli.
+
+La pagina non si scrive a mano: si compila un file JSON e lo script lo trasforma in HTML. Così il risultato ha sempre lo stesso aspetto.
+
+## Regola obbligatoria: il file HTML va sempre creato
+
+Ogni richiesta di guida, itinerario o giro di una giornata si chiude SEMPRE con un file HTML creato davvero (`/mnt/user-data/outputs/<citta>-guida.html`) e presentato con `present_files`. Non si consegna mai la guida solo come testo in chat, come artifact, come PDF, Markdown o altro formato, e non ci si ferma alla sola proposta. Se manca uno strumento (foto, ricerca luoghi, ricerca web), il file si crea comunque: foto assenti con `photo_note`, informazioni non verificate dichiarate come tali. Con più città si creano più file, uno per città. La risposta finale non è completa finché il file non è stato generato con lo script e presentato.
+
+## Regola obbligatoria: il percorso completo su Google Maps va sempre creato
+
+Per ogni guida si crea SEMPRE il percorso completo dell'itinerario su Google Maps, dalla prima all'ultima tappa e con il rientro alla partenza (salvo `return_leg: false`), nelle tre modalità: a piedi, mezzi pubblici e auto. Si ottiene con `python scripts/build_guide.py --links <json>` a partire dalle coordinate delle tappe già ordinate; non si scrivono mai i link a mano e non si sostituisce il percorso con link a singole tappe o con la sola mappa schematica. Vale anche quando l'utente chiede di creare subito la guida, senza proposta, e quando manca qualche dato (le tappe senza coordinate si cercano con `places_search`; se una resta non localizzabile lo si dichiara). Il percorso compare in tre punti: nella proposta, nella sezione d'apertura "Il percorso su Google Maps" del file HTML (schede A piedi / Mezzi pubblici / Auto, con mappa incorporata e pulsante "Apri in Google Maps") e nella risposta finale. Una guida senza questa sezione non è consegnabile: va rigenerata.
+
+## File della skill
+
+- `assets/template.html`: il modello della pagina (non modificarlo per una singola guida).
+- `scripts/build_guide.py`: controlla il JSON e genera l'HTML; con `--distances` stima le distanze tra le tappe; con `--links` stampa i link Google Maps dell'intero percorso nelle tre modalità (a piedi, mezzi pubblici, auto).
+- `references/schema.md`: tutti i campi del JSON e come compilarli. Leggilo prima di scrivere il JSON.
+- `assets/esempio-rotterdam.json`: esempio approvato, ridotto a 3 tappe (partenza, tratto in metro con `label_pos`, tappa con `along`) più pranzo, rientro e consigli. Usalo come guida di stile e di lunghezza dei testi: ogni tappa del tuo JSON deve avere la stessa completezza e lunghezza di quelle dell'esempio.
+
+## Flusso di lavoro
+
+Procedi nell'ordine. Non saltare la proposta, a meno che l'utente chieda esplicitamente di creare subito la guida.
+
+### 1. Raccogli i dati
+Dall'utente servono: una o più città, le tappe preferite (facoltative), la data, gli orari (default 10:00–18:00), il punto di partenza e arrivo (default la stazione centrale), i mezzi (a piedi più mezzi pubblici per i tratti lunghi e il rientro), i vincoli di spesa e i temi (es. "solo luoghi storici"). Se mancano dati essenziali, chiedine uno alla volta. Se i vincoli noti dell'utente (es. nessuna attività a pagamento sopra una soglia) sono già disponibili, applicali senza richiederli e senza dirlo.
+Più città = una guida (un file) per ogni città.
+
+### 2. Verifica gli strumenti
+Servono ricerca web, ricerca luoghi con mappa (`places_search` e `places_map_display_v0`) e `present_files`. Se manca uno strumento, dillo in una riga e dichiara cosa resterà non verificato.
+
+### 3. Proposta (senza creare file)
+1. Cerca sul web le tappe adatte, con più ricerche separate e priorità a fonti ufficiali. Includi le tappe preferite dell'utente.
+2. Controlla per la data scelta: orari di apertura (giorni speciali inclusi), prezzi, chiusure, mercati del giorno, lavori ai trasporti. Usa gli orari dei luoghi quando ci sono e verifica sul web per i punti importanti.
+3. Ordina le tappe in modo geografico e realistico: una mattina di zone vicine, il pranzo nel punto giusto, un pomeriggio che chiude entro l'orario. Prevedi margini e tratti in metro/tram dove il cammino sarebbe troppo lungo.
+4. **Crea sempre la mappa Google Maps dell'intero percorso** (obbligatorio; è il primo elemento della proposta e della guida). Con una sola chiamata `places_search` (più query insieme, una per tappa) ricava le coordinate delle tappe già ordinate e scrivi un JSON provvisorio con almeno `id`, `name`, `lat`, `lon` (più `return_leg: false` se non si rientra alla partenza). Poi esegui:
+   ```bash
+   python scripts/build_guide.py --links provvisorio.json
+   ```
+   Lo script stampa i link Google Maps per le tre modalità, dalla prima tappa all'ultima e con il rientro alla partenza: **a piedi** e **auto** in un unico link (se i punti sono più di 11 il percorso è diviso in parti, per il limite di 9 tappe intermedie di Google Maps), **mezzi pubblici** un link per ogni spostamento tra due tappe (con i mezzi Google Maps non accetta tappe intermedie). Se una tappa è opzionale o va esclusa dalla mappa, elencane gli id in `route_ids` nel campo `google`.
+5. Presenta la proposta in poche righe: prima i link della mappa (a piedi, auto e il primo spostamento in mezzi pubblici; gli altri spostamenti sono nella guida), poi orari, distanze stimate, costi, avvisi (tappe chiuse, cammino totale). Per stimare i chilometri usa `scripts/build_guide.py --distances` sullo stesso JSON provvisorio oppure la linea d'aria per 1,3.
+6. Chiedi conferma o modifiche. Non scrivere ancora la guida: dopo la conferma passa ai punti 4–6 e crea sempre il file HTML.
+
+### 4. Dati e foto (dopo la conferma)
+1. Coordinate e `cid` li hai già dal passo 3: riusali senza ripetere `places_search` (cercalo solo per le tappe nuove o cambiate). Chiama `places_map_display_v0` una sola volta con i `place_id` di tutte le tappe: nei risultati trovi le foto. Prendi 2 foto per tappa e copiane gli URL esattamente, senza modificarli.
+2. Se una tappa non ha foto, lascia `photos` vuoto e compila `photo_note`.
+3. Mai cercare né mostrare foto di persone. Per luoghi sensibili (per esempio quartieri a luci rosse) niente foto della zona; la tappa va segnata come "(opzionale)" nel nome, con regole di rispetto e senza descrivere persone.
+4. Non inserire chiavi API o dati personali nel file.
+
+### 5. Scrivi il JSON
+Segui `references/schema.md`. Regole sui testi:
+- Italiano, tono chiaro e concreto, 2–3 paragrafi per tappa (circa 120–170 parole in totale) con storia, cosa vedere e consigli pratici.
+- Scrivi solo fatti che hai verificato o che conosci con certezza. Quello che non puoi verificare va scritto come tale ("non sono riuscito a verificare", "controlla sul sito"). Non inventare orari, prezzi, indirizzi o date.
+- Rispetta i vincoli dell'utente (spesa, temi). Le attività a pagamento sopra soglia vanno solo citate come esterno o escluse.
+- "Cosa fotografare" e "Come proseguire" sono obbligatori per ogni tappa; "Lungo la strada" (`along`) solo per i tratti lunghi e interessanti.
+- Non chiamare "perfetta" nessuna informazione incerta: gli avvisi servono al lettore.
+
+### 6. Genera e controlla
+```bash
+python scripts/build_guide.py dati.json /mnt/user-data/outputs/<citta>-guida.html
+```
+Leggi errori e avvisi: correggi gli errori; per ogni avviso decidi se è un problema reale (distanze, etichette mappa che si sovrappongono: cambia `label_pos`). Controlla in particolare l'avviso sulle parti della mappa Google (più di 11 punti) e verifica con `grep -c "Il percorso su Google Maps" <file>` che la sezione sia presente (deve dare 1; altrimenti correggi il JSON e rigenera); le tre modalità e i link sono quelli dell'ultimo `--links`. Poi presenta il file con `present_files` (passo obbligatorio) e non crearne altre versioni.
+
+### 7. Risposta finale (breve)
+In poche righe: il percorso (con i link Google Maps a piedi e auto, e il primo spostamento in mezzi pubblici; gli altri sono nella guida), cosa è stato verificato oggi e cosa no (orari a rischio, tappe chiuse, mappa Google non aperta qui, distanze stimate), e dove sta il file. Ricorda che le foto e la mappa Google si caricano da internet.
+
+## Note
+- Il modello legge tutto dal JSON: non servono modifiche al codice per nuove città.
+- La mappa incorporata di Google può non comparire; i pulsanti funzionano sempre. Non serve nessuna chiave API: la mappa usa i link di Google Maps con le coordinate delle tappe.
+- Linee e orari dei mezzi pubblici, traffico e parcheggi per l'auto non sono verificabili qui: Google Maps li calcola quando si apre il link.
+- Per cambiare modalità attive, scheda iniziale, tappe incluse o note usa i campi `modes`, `default_mode`, `route_ids`, `mode_notes` di `google` (vedi `references/schema.md`) e rigenera.
+- Dopo la consegna, le modifiche richieste dall'utente (spostare un pulsante, cambiare un testo) si fanno sul JSON e rigenerando, non a mano sull'HTML.
+<<<FINE FILE>>>
+
+<<<INIZIO FILE: guida-turistica/references/schema.md>>>
+# Schema del JSON della guida
+
+Esempio completo: `assets/esempio-rotterdam.json`. Tutti i testi sono semplice testo italiano; `**così**` produce grassetto. Non usare HTML.
+
+## Livello principale
+
+| Campo | Obbligatorio | Descrizione |
+|---|---|---|
+| `lang` | no | "it" di default |
+| `title` | sì | Titolo della scheda del browser |
+| `h1` | sì | Titolo grande della guida |
+| `intro` | sì | 2 frasi: cosa si vede, partenza e arrivo, data |
+| `facts` | no | Lista di `{"v":"10","l":"tappe"}` (es. tappe, km a piedi, orario, costo) |
+| `transit_label` | no | Nome dei mezzi pubblici nei tratti ("metro", "tram", "mezzi") |
+| `return_leg_label` | no | Etichetta del rientro sulla mappa schematica |
+| `return_leg` | no | `false` se non si rientra al punto di partenza |
+| `map` | no | `{"note": "...", "water": {"label","label_at":[lat,lon],"points":[[lat,lon],...]}}`: il fiume è facoltativo e schematico |
+| `google` | no | Mappa Google Maps dell'intero percorso e pulsanti: `modes`, `default_mode`, `route_ids`, `mode_notes`, `general_note`, `note`, `buttons` (vedi sotto). Se manca, tutto si genera da solo |
+| `lunch` | no | `{"title","intro","items":[{"t","d"}]}` |
+| `return` | no | `{"title","lead","items":[...]}`: rientro con i mezzi pubblici |
+| `tips` | no | Lista di consigli pratici (anche **grassetto**) |
+| `summary_note`, `photo_credit`, `footer`, `map_aria` | no | Testi opzionali |
+| `stops` | sì | Lista delle tappe, nell'ordine di visita |
+
+### Mappa Google Maps dell'intero percorso (`google`)
+La pagina si apre con la sezione "Il percorso su Google Maps": schede **A piedi**, **Mezzi pubblici**, **Auto** per l'intero percorso (tutte le tappe in ordine, con il rientro alla partenza se `return_leg` non è `false`). Nessun campo è obbligatorio: senza `google` la sezione si genera da sola dalle tappe.
+
+| Campo | Descrizione |
+|---|---|
+| `modes` | Modalità attive e il loro ordine, tra `walking`, `transit`, `driving` (default: tutte e tre) |
+| `default_mode` | Scheda aperta all'inizio (default: la prima di `modes`) |
+| `route_ids` | Id delle tappe incluse nella mappa, in ordine (default: tutte); utile per escludere una tappa opzionale |
+| `mode_notes` | Testi sotto la mappa per modalità: `{"walking":"...","transit":"...","driving":"..."}` (default: avvisi standard) |
+| `general_note` | Nota sotto le schede (default: "Le mappe si caricano da internet...") |
+| `note` | Testo sopra i pulsanti del percorso della guida (a piedi + mezzi pubblici) |
+
+Come si spezza il percorso (limiti di Google Maps): a piedi e auto in parti da 11 punti al massimo (9 tappe intermedie), con scelta della parte; mezzi pubblici una scheda per ogni spostamento tra due tappe, perché con i mezzi Google Maps non accetta tappe intermedie. `python scripts/build_guide.py --links dati.json` stampa tutti i link.
+
+`iframe_title` non è più usato: i titoli accessibili si generano da soli.
+
+### Pulsanti del percorso della guida (`google.buttons`)
+Sotto le schede c'è il blocco "Il percorso della guida: a piedi + mezzi pubblici" (solo se la guida ha tratti `leg: transit` oppure `google.buttons`).
+Ogni pulsante: `{"label","from_id","to_id","via_ids":[...],"mode":"walking"|"transit"}`.
+`via_ids` al massimo 9 (limite di Google Maps). I `from_id`, `to_id` e `via_ids` sono id di tappe. Per i tratti a piedi lunghi dividi in più pulsanti.
+
+## Tappa (`stops[]`)
+
+| Campo | Obbl. | Descrizione |
+|---|---|---|
+| `id` | sì | Slug unico (lettere minuscole, trattini): serve per i collegamenti |
+| `name` | sì | Nome mostrato. Il testo dopo " e " o " (" viene tagliato nelle etichette della mappa e della navigazione: "Witte Huis e Oude Haven" diventa "Witte Huis" |
+| `time` | sì | Arrivo previsto, `HH:MM`, in ordine crescente |
+| `dist` | sì | Dalla tappa precedente, es. `"0,8 km, 10 min"` oppure `"metro 25 min + 1 km a piedi"`; per la prima tappa `"partenza"` |
+| `lat`, `lon` | sì | Coordinate decimali |
+| `cid` o `url` | sì | `cid` Google Maps (da `places_search`) oppure un `url` completo (es. ricerca per coordinate) |
+| `hours` | sì | Orari per la data scelta; segnala se oggi è chiuso |
+| `price` | sì | Ingresso e costi, con distinzione tra esterno gratuito e interno a pagamento |
+| `photos` | no* | Lista di URL `https://` (di solito 2). Vuota per i luoghi sensibili |
+| `photo_note` | no* | Mostrata quando `photos` è vuoto (*obbligatoria in quel caso) |
+| `text` | sì | 2–3 paragrafi |
+| `shoot` | sì | Cosa fotografare e a quale ora/luce |
+| `next` | sì | Come proseguire verso la tappa successiva |
+| `along` | no | `{"zone": "...", "foto": ["...", "..."]}`: tratti lunghi interessanti |
+| `leg` | no | `"transit"` se il tratto che arriva a questa tappa è in metro/tram (disegnato tratteggiato); altrimenti a piedi |
+| `label_pos` | no | `right` (default), `left`, `above`, `below`: posizione dell'etichetta sulla mappa schematica |
+
+## Controlli dello script
+- Errori (la guida non viene generata): campi mancanti, `google.modes`/`default_mode`/`route_ids` non validi, id duplicati, orari non crescenti, URL foto non `https://`, pulsanti con id sconosciuti o più di 9 tappe intermedie.
+- Avvisi: tappe senza foto né `photo_note`, descrizioni troppo brevi, distanze dichiarate incoerenti con la linea d'aria, etichette della mappa che si sovrappongono, percorso Google Maps diviso in più parti (più di 11 punti).
+<<<FINE FILE>>>
+
+<<<INIZIO FILE: guida-turistica/assets/esempio-rotterdam.json>>>
+{
+ "lang": "it",
+ "title": "Rotterdam a piedi: la città rimasta e le isole",
+ "h1": "Rotterdam a piedi: il passato rimasto e il giro delle isole",
+ "intro": "Dieci tappe dalla Delfshaven del Seicento al fiume Maas, tra pochi monumenti sopravvissuti al 1940 e i ponti e le penisole di Kop van Zuid. Partenza e arrivo a Rotterdam Centraal, sabato 31 ottobre 2026.",
+ "facts": [
+  {
+   "v": "3",
+   "l": "tappe"
+  },
+  {
+   "v": "10–18",
+   "l": "orario"
+  },
+  {
+   "v": "Gratuito",
+   "l": ""
+  }
+ ],
+ "transit_label": "metro",
+ "return_leg_label": "rientro in metro",
+ "map": {
+  "water": {
+   "label": "Nieuwe Maas",
+   "label_at": [
+    51.9112,
+    4.458
+   ],
+   "points": [
+    [
+     51.903,
+     4.43
+    ],
+    [
+     51.905,
+     4.448
+    ],
+    [
+     51.9075,
+     4.47
+    ],
+    [
+     51.9095,
+     4.486
+    ],
+    [
+     51.9105,
+     4.501
+    ],
+    [
+     51.9125,
+     4.516
+    ]
+   ]
+  },
+  "note": "Mappa schematica in scala approssimata: le linee uniscono le tappe in ordine e non seguono le strade. Ogni tappa ha il link a Google Maps per la navigazione reale. Le linee blu tratteggiate sono i tratti in metro, compreso il rientro."
+ },
+ "google": {
+  "note": "Percorso della guida: metro fino a Stadhuis, poi a piedi fino al Witte Huis. La mappa si carica da internet.",
+  "buttons": [
+   {
+    "label": "Andata in metro: Centraal → Stadhuis",
+    "from_id": "centraal",
+    "to_id": "stadhuis",
+    "mode": "transit"
+   },
+   {
+    "label": "A piedi: Stadhuis → Witte Huis",
+    "from_id": "stadhuis",
+    "to_id": "witte-huis",
+    "mode": "walking"
+   }
+  ]
+ },
+ "lunch": {
+  "title": "Dove pranzare spendendo poco",
+  "intro": "Intorno alle 13:00 sei in centro. Ecco le opzioni nel raggio di pochi passi; i prezzi cambiano, quindi controlla sul posto.",
+  "items": [
+   {
+    "t": "Mercato Binnenrotte (martedì e sabato)",
+    "d": "Oggi è sabato: il mercato all’aperto si trova a pochi passi dalla Laurenskerk, con banchi di cibo e prodotti freschi. È la scelta più economica per un pranzo veloce."
+   },
+   {
+    "t": "Markthal",
+    "d": "Il mercato coperto sotto l’arco decorato, a due passi dalla chiesa. È un edificio moderno, ma l’ingresso è libero e ci sono molti banchi di cibo; i prezzi variano."
+   },
+   {
+    "t": "Supermercato Albert Heijn",
+    "d": "Panino, frutta e una bevanda per un pranzo al sacco da mangiare lungo l’Oude Haven, se non piove."
+   },
+   {
+    "t": "Fenix Food Factory (Katendrecht)",
+    "d": "Meglio per una pausa con birra o snack nel pomeriggio che per un pranzo: le recensioni segnalano prezzi alti."
+   }
+  ]
+ },
+ "return": {
+  "title": "Rientro con i mezzi pubblici",
+  "lead": "**Dal Willemsbrug a Rotterdam Centraal in metro**, circa 15 minuti in tutto, senza contare la camminata fino alla stazione.",
+  "items": [
+   "Dopo il Willemsbrug cammina circa 700 m fino alla stazione **Blaak**.",
+   "Da Blaak prendi la metro A, B o C per una fermata fino a **Beurs**, poi la linea D o E verso Rotterdam Centraal: due fermate.",
+   "Paga con carta contactless o telefono: avvicinala al lettore sia salendo sia scendendo.",
+   "Se sei stanco, puoi anche saltare l’ultimo tratto a piedi e salire in metro alla fermata più vicina al ponte."
+  ]
+ },
+ "tips": [
+  "**Distanza:** circa 12 km tra camminate e due tratti in metro. Se serve recuperare tempo e gambe, salta Katendrecht (circa 2,5 km in meno).",
+  "**Scarpe comode:** molti tratti sono lungo il fiume, quasi sempre in piano, con vento.",
+  "**Abbigliamento:** a fine ottobre il tempo è variabile e lungo il fiume fa freddo; porta una giacca impermeabile.",
+  "**Orari di oggi (sabato 31 ottobre):** Stadhuis chiuso all’interno; Laurenskerk risulta chiusa su Google Maps; il Fenix e l’Hotel New York sono aperti. Verifica sempre prima di andare.",
+  "**Biciclette:** a Rotterdam sono molto numerose; guarda sempre prima di attraversare le piste ciclabili."
+ ],
+ "footer": "Foto: Google Maps, contributi degli utenti. Le immagini si caricano da internet: se sei offline non compaiono. Orari e prezzi sono quelli trovati il 31 ottobre 2026 e possono cambiare.",
+ "stops": [
+  {
+   "id": "centraal",
+   "name": "Rotterdam Centraal",
+   "time": "10:00",
+   "dist": "partenza",
+   "lat": 51.9243,
+   "lon": 4.4699,
+   "cid": "13007313067894585141",
+   "hours": "Stazione sempre accessibile",
+   "price": "Gratuito",
+   "photos": [
+    "https://lh3.googleusercontent.com/grass-cs/AABkmLexasAhEw9etPWvESkftAFUhmoPX9TEtD_Iz2LT9cWW0uyZb-48x32KYj3SF_R8hlWm24D_KEAdLjOKu2LesUmfxkshFvZ1eGGH5VlXDfE2nq8XxnOZp4PqaJUiYG_SQgxhNaXWcpZX9RRA=s4800-w800-h600",
+    "https://lh3.googleusercontent.com/grass-cs/AABkmLcYWPd-bEQRKW8OesAFlHbECmlgE9twHm_FijhLlMWZgJbC9-bgKkfrbBseStgBzdop8mTUWcGgYrB3yYyroP0V0hleV-hqmoKfuVS7PRr---yS1TeAiALGZPuwRlOOMXT-ZCsO5A=s4800-w800-h600"
+   ],
+   "text": [
+    "La stazione è il punto di partenza della giornata e il contrario di ciò che vedrai nelle prossime ore: un edificio contemporaneo, con un tetto spigoloso e inclinato che si proietta sulla piazza. Il nuovo Centraal è stato inaugurato nel 2014 al posto della vecchia stazione ed è uno dei grandi nodi ferroviari dei Paesi Bassi, con treni nazionali e internazionali, tram, autobus e le linee di metro D ed E.",
+    "Per arrivare a Delfshaven, prima tappa della mattina, prendi la metro D fino a Beurs e lì cambia con la linea A, B o C in direzione ovest: in tutto circa 25 minuti. Alla fermata Delfshaven si sale in superficie e la città vecchia è a poco più di un chilometro a piedi.",
+    "Per i mezzi usa carta contactless o telefono: avvicinala al lettore sia salendo sia scendendo. Se parti in anticipo, i bar e i negozi della stazione sono aperti presto e ti permettono di comprare acqua e uno spuntino."
+   ],
+   "shoot": "L’esterno della stazione dalla piazza, con il tetto inclinato che riflette il cielo. Nelle giornate di sole il riflesso rende lo scatto più forte; evita di inquadrare i viaggiatori da vicino.",
+   "next": "Scendi in metro: linea D fino a Beurs, poi 400 m a piedi fino al municipio (Stadhuis).",
+   "label_pos": "above"
+  },
+  {
+   "id": "stadhuis",
+   "name": "Stadhuis e Coolsingel",
+   "time": "12:35",
+   "dist": "metro 10 min + 0,4 km",
+   "lat": 51.9228,
+   "lon": 4.4793,
+   "cid": "14643177585642387242",
+   "hours": "Lun–ven 8:30–17:00; oggi (sabato) chiuso, esterno libero",
+   "price": "Gratuito (esterno)",
+   "photos": [
+    "https://lh3.googleusercontent.com/grass-cs/AABkmLc_brRqdMNAGNd4ncMGWXloTYjcKFFD9FG4tGcdiUyMb7Hdm-BZVlY6hWKbOdqyV0Qfv-tm0EwWOIZ54ADYVFpRKtdL23nJ_mlHd_ZMHmz9pLHZco54b43_8I7IpS_0e_fcK0ddGA=s4800-w800-h600",
+    "https://lh3.googleusercontent.com/grass-cs/AABkmLfOi211eEo7Qg6ysKyL1dOGkgwAED7TOAc7-e4ctN6SRMz99lM1TcF14veKRGpn4DL5284XKWx2pH4LskeqvS7iBwzeCXjQrQ96V_ceUpQOKp1lEAr8FAIueKTwHnX7lVlaiaaa=s4800-w800-h600"
+   ],
+   "text": [
+    "Il municipio di Rotterdam è uno dei pochi edifici del centro che attraversò indenne il bombardamento del 1940, mentre tutto intorno la città bruciava. Fu costruito tra il 1914 e il 1920 su progetto di Henri Evers: la prima pietra fu posta nel 1915 dalla regina Guglielmina. Lo stile è un eclettico Beaux-Arts con influenze bizantine, romaniche e Art Déco: facciata simmetrica, ricca di sculture, con una torre dell’orologio al centro.",
+    "L’edificio ha una pianta articolata attorno a un giardino interno: una strada pubblica lo attraversa in galleria. Il municipio è aperto al pubblico dal lunedì al venerdì (8:30–17:00); oggi, sabato, è chiuso e ti limiti all’esterno. Davanti, lo Stadhuisplein è la piazza dove si affacciano locali e un gruppo di sculture in bronzo, molto apprezzato nelle recensioni.",
+    "Nelle immediate vicinanze, sempre sul Coolsingel, si trova l’ex ufficio postale, costruito negli stessi anni e anch’esso scampato alla distruzione: è stato oggetto di un progetto di riconversione in spazi pubblici e hotel, quindi guardalo dall’esterno. Il Coolsingel, rifatto negli ultimi anni, è il grande viale che nel Novecento diventò il simbolo della Rotterdam ricostruita."
+   ],
+   "shoot": "La facciata con la torre dell’orologio inquadrata dalla piazza, e i dettagli delle sculture sopra gli ingressi. Per una foto pulita scatta dal lato opposto del Coolsingel; se vuoi inquadrare le persone chiedi il permesso, perché davanti all’ingresso c’è sorveglianza.",
+   "next": "Segui la Hoogstraat verso sud-est: dopo circa 600 m, in Korte Hoogstraat, trovi il Schielandshuis.",
+   "leg": "transit",
+   "label_pos": "above"
+  },
+  {
+   "id": "witte-huis",
+   "name": "Witte Huis e Oude Haven",
+   "time": "14:20",
+   "dist": "0,8 km, 10 min",
+   "lat": 51.9189,
+   "lon": 4.4918,
+   "cid": "12516029052630049688",
+   "hours": "Esterno sempre visibile; il caffè al pianterreno apre alle 15:00",
+   "price": "Gratuito (esterno)",
+   "photos": [
+    "https://lh3.googleusercontent.com/grass-cs/AABkmLe185xaRRgry-eJfJaVaYHnYDBgrY6O1E_uI2Eyjz-5-HmhbV3jknXafM9VjaZeQOefaAGfZL-Nr23N_twgWwykCvg6NKYZfmOf3ZlIFYxkoM0iwRzLJ5oAtbF87l4YpGCoXFdjFQ=s4800-w800-h600",
+    "https://lh3.googleusercontent.com/grass-cs/AABkmLeeV7m8sz7mUByMwSvPQDiyS-WdDyUeYzAVaUv3__IlKYTIZ2AQbjqCyFyF2ip94l1noErr409lwZnLrKetl6hgo6KcW0BVqJTAHZOsef3zeB9C9nrp4Zp5xg21oIwH_kCQN8u1YcRmMKYc=s4800-w800-h600"
+   ],
+   "text": [
+    "Il Witte Huis, la “Casa Bianca”, fu completato nel 1898 su progetto di Willem Molenbroek ed è considerato uno dei primi grattacieli d’Europa: circa 43 metri di altezza, un record per l’epoca, tanto che per decenni fu l’edificio più alto dei Paesi Bassi. Fu tra i primi a usare il cemento armato e a essere dotato di ascensore. Costruito con cura, resistette al bombardamento del 1940, quando tutto il vecchio porto intorno fu raso al suolo.",
+    "Si affaccia sull’Oude Haven, il porto più antico di Rotterdam, scavato nel Trecento sulla riva della Maas. Qui la città nacque e si sviluppò come porto commerciale: oggi i moli ospitano barche storiche e terrazze di locali. Poco più in là il Wijnhaven, del 1613, e il Leuvehaven, il più antico porto artificiale della città (1609), ricordano quanto fosse intenso l’antico traffico di merci.",
+    "Il caffè-ristorante al piano terra del Witte Huis apre di pomeriggio, quindi per ora l’esterno basta. Attorno al porto, le Case Cubiche e il Markthal sono moderni e non fanno parte di questa tappa: se vuoi, guardali da fuori, ma il momento storico è questo edificio isolato tra i palazzi ricostruiti."
+   ],
+   "shoot": "Il Witte Huis intero dalla riva opposta dell’Oude Haven, con la facciata bianca e le barche in primo piano; con il cielo azzurro il bianco risalta. Per un effetto storico, inquadra il palazzo con alle spalle i grattacieli moderni.",
+   "next": "Segui il Leuvehaven verso sud fino all’Erasmusbrug: circa 1,6 km lungo l’acqua.",
+   "along": {
+    "zone": "Il tragitto scende lungo il porto più antico, il Wijnhaven e poi il Leuvehaven, dove si apre il Museo Marittimo con il suo molo e le navi storiche (aperto di norma dal martedì al sabato 10:00–17:00; il molo dalle 11:00). È un tratto in piano e in gran parte pedonale lungo l’acqua.",
+    "foto": [
+     "Le navi storiche ormeggiate nel Leuvehaven, con i grattacieli dietro.",
+     "Il contrasto tra le vecchie gru del porto e la skyline moderna sul fondo."
+    ]
+   }
+  }
+ ]
+}
+<<<FINE FILE>>>
+

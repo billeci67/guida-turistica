@@ -1,0 +1,1108 @@
+==================================================
+FILE DELLA SKILL "guida-turistica" (testo integrale)
+==================================================
+Istruzioni per te, Claude: la skill "guida-turistica" non è installata, quindi i suoi file sono qui sotto in forma di testo. Usala esattamente come se fosse installata.
+1. Ricrea nell'ambiente di lavoro SOLO questi due file, con contenuto identico (copialo senza modifiche) e gli stessi percorsi, scrivendoli con comandi di shell (heredoc con delimitatore tra apici):
+   /home/claude/guida-turistica/scripts/build_guide.py
+   /home/claude/guida-turistica/assets/template.html
+2. SKILL.md, references/schema.md e assets/esempio-rotterdam.json NON vanno ricreati: leggili qui sotto e seguili come se fossero la skill installata.
+3. Esegui gli script dalla cartella /home/claude/guida-turistica (per esempio: python scripts/build_guide.py --links provvisorio.json) e segui SKILL.md in ogni sua parte.
+
+<<<INIZIO FILE: guida-turistica/SKILL.md>>>
+---
+name: guida-turistica
+description: Crea guide turistiche HTML di una giornata a piedi per una o più città (mappa Google Maps dell'intero percorso a piedi, con mezzi pubblici o in auto, itinerario con orari, distanze, mappa schematica, foto, descrizioni estese, cosa fotografare, pranzo e rientro con i mezzi pubblici). Il risultato è sempre un file HTML creato e presentato, mai solo testo in chat, e contiene sempre il percorso completo dell'itinerario su Google Maps. Usa SEMPRE questa skill quando l'utente chiede di creare, preparare o proporre una guida, un itinerario o un giro turistico di una giornata per una città (es. "crea la guida di Torino", "itinerario a piedi a Lisbona dalla stazione", "una giornata a Firenze con tappe X e Y"), anche se non nomina la skill, e quando vuole una guida "come quella di Rotterdam o di Amsterdam".
+---
+
+# Guida turistica di una giornata
+
+Produce una guida HTML autonoma, nello stile approvato dall'utente (guida di Rotterdam): in apertura la mappa Google Maps dell'intero percorso (schede A piedi, Mezzi pubblici, Auto), poi mappa schematica, riepilogo con orari e distanze, tappe con foto, descrizioni estese, "Cosa fotografare", "Come proseguire", pranzo, rientro e consigli.
+
+La pagina non si scrive a mano: si compila un file JSON e lo script lo trasforma in HTML. Così il risultato ha sempre lo stesso aspetto.
+
+## Regola obbligatoria: il file HTML va sempre creato
+
+Ogni richiesta di guida, itinerario o giro di una giornata si chiude SEMPRE con un file HTML creato davvero (`/mnt/user-data/outputs/<citta>-guida.html`) e presentato con `present_files`. Non si consegna mai la guida solo come testo in chat, come artifact, come PDF, Markdown o altro formato, e non ci si ferma alla sola proposta. Se manca uno strumento (foto, ricerca luoghi, ricerca web), il file si crea comunque: foto assenti con `photo_note`, informazioni non verificate dichiarate come tali. Con più città si creano più file, uno per città. La risposta finale non è completa finché il file non è stato generato con lo script e presentato.
+
+## Regola obbligatoria: il percorso completo su Google Maps va sempre creato
+
+Per ogni guida si crea SEMPRE il percorso completo dell'itinerario su Google Maps, dalla prima all'ultima tappa e con il rientro alla partenza (salvo `return_leg: false`), nelle tre modalità: a piedi, mezzi pubblici e auto. Si ottiene con `python scripts/build_guide.py --links <json>` a partire dalle coordinate delle tappe già ordinate; non si scrivono mai i link a mano e non si sostituisce il percorso con link a singole tappe o con la sola mappa schematica. Vale anche quando l'utente chiede di creare subito la guida, senza proposta, e quando manca qualche dato (le tappe senza coordinate si cercano con `places_search`; se una resta non localizzabile lo si dichiara). Il percorso compare in tre punti: nella proposta, nella sezione d'apertura "Il percorso su Google Maps" del file HTML (schede A piedi / Mezzi pubblici / Auto, con mappa incorporata e pulsante "Apri in Google Maps") e nella risposta finale. Una guida senza questa sezione non è consegnabile: va rigenerata.
+
+## File della skill
+
+- `assets/template.html`: il modello della pagina (non modificarlo per una singola guida).
+- `scripts/build_guide.py`: controlla il JSON e genera l'HTML; con `--distances` stima le distanze tra le tappe; con `--links` stampa i link Google Maps dell'intero percorso nelle tre modalità (a piedi, mezzi pubblici, auto).
+- `references/schema.md`: tutti i campi del JSON e come compilarli. Leggilo prima di scrivere il JSON.
+- `assets/esempio-rotterdam.json`: esempio completo e approvato. Usalo come guida di stile e di lunghezza dei testi.
+
+## Flusso di lavoro
+
+Procedi nell'ordine. Non saltare la proposta, a meno che l'utente chieda esplicitamente di creare subito la guida. La proposta serve solo a concordare il percorso: il file HTML resta il risultato finale obbligatorio e va creato appena l'utente conferma (o subito, se ha chiesto di creare la guida).
+
+### 1. Raccogli i dati
+Dall'utente servono: una o più città, le tappe preferite (facoltative), la data, gli orari (default 10:00–18:00), il punto di partenza e arrivo (default la stazione centrale), i mezzi (a piedi più mezzi pubblici per i tratti lunghi e il rientro), i vincoli di spesa e i temi (es. "solo luoghi storici"). Se mancano dati essenziali, chiedine uno alla volta. Se i vincoli noti dell'utente (es. nessuna attività a pagamento sopra una soglia) sono già disponibili, applicali senza richiederli e senza dirlo.
+Più città = una guida (un file) per ogni città.
+
+### 2. Verifica gli strumenti
+Servono ricerca web, ricerca luoghi con mappa (`places_search` e `places_map_display_v0`) e `present_files`. Se manca uno strumento, dillo in una riga e dichiara cosa resterà non verificato.
+
+### 3. Proposta (senza creare file)
+1. Cerca sul web le tappe adatte, con più ricerche separate e priorità a fonti ufficiali. Includi le tappe preferite dell'utente.
+2. Controlla per la data scelta: orari di apertura (giorni speciali inclusi), prezzi, chiusure, mercati del giorno, lavori ai trasporti. Usa gli orari dei luoghi quando ci sono e verifica sul web per i punti importanti.
+3. Ordina le tappe in modo geografico e realistico: una mattina di zone vicine, il pranzo nel punto giusto, un pomeriggio che chiude entro l'orario. Prevedi margini e tratti in metro/tram dove il cammino sarebbe troppo lungo.
+4. **Crea sempre la mappa Google Maps dell'intero percorso** (obbligatorio; è il primo elemento della proposta e della guida). Con `places_search` ricava le coordinate delle tappe già ordinate e scrivi un JSON provvisorio con almeno `id`, `name`, `lat`, `lon` (più `return_leg: false` se non si rientra alla partenza). Poi esegui:
+   ```bash
+   python scripts/build_guide.py --links provvisorio.json
+   ```
+   Lo script stampa i link Google Maps per le tre modalità, dalla prima tappa all'ultima e con il rientro alla partenza: **a piedi** e **auto** in un unico link (se i punti sono più di 11 il percorso è diviso in parti, per il limite di 9 tappe intermedie di Google Maps), **mezzi pubblici** un link per ogni spostamento tra due tappe (con i mezzi Google Maps non accetta tappe intermedie). Se una tappa è opzionale o va esclusa dalla mappa, elencane gli id in `route_ids` nel campo `google`.
+5. Presenta la proposta in poche righe: prima i link della mappa (a piedi, auto e il primo spostamento in mezzi pubblici; gli altri spostamenti sono nella guida), poi orari, distanze stimate, costi, avvisi (tappe chiuse, cammino totale). Per stimare i chilometri usa `scripts/build_guide.py --distances` sullo stesso JSON provvisorio oppure la linea d'aria per 1,3.
+6. Chiedi conferma o modifiche. Non scrivere ancora la guida: dopo la conferma passa ai punti 4–6 e crea sempre il file HTML.
+
+### 4. Dati e foto (dopo la conferma)
+1. Per ogni tappa ricava coordinate e `cid` con `places_search`, poi chiama `places_map_display_v0` con i `place_id`: nei risultati trovi le foto. Prendi 2 foto per tappa e copiane gli URL esattamente, senza modificarli.
+2. Se una tappa non ha foto, lascia `photos` vuoto e compila `photo_note`.
+3. Mai cercare né mostrare foto di persone. Per luoghi sensibili (per esempio quartieri a luci rosse) niente foto della zona; la tappa va segnata come "(opzionale)" nel nome, con regole di rispetto e senza descrivere persone.
+4. Non inserire chiavi API o dati personali nel file.
+
+### 5. Scrivi il JSON
+Segui `references/schema.md`. Regole sui testi:
+- Italiano, tono chiaro e concreto, 2–3 paragrafi per tappa (circa 120–170 parole in totale) con storia, cosa vedere e consigli pratici.
+- Scrivi solo fatti che hai verificato o che conosci con certezza. Quello che non puoi verificare va scritto come tale ("non sono riuscito a verificare", "controlla sul sito"). Non inventare orari, prezzi, indirizzi o date.
+- Rispetta i vincoli dell'utente (spesa, temi). Le attività a pagamento sopra soglia vanno solo citate come esterno o escluse.
+- "Cosa fotografare" e "Come proseguire" sono obbligatori per ogni tappa; "Lungo la strada" (`along`) solo per i tratti lunghi e interessanti.
+- Non chiamare "perfetta" nessuna informazione incerta: gli avvisi servono al lettore.
+
+### 6. Genera e controlla
+```bash
+python scripts/build_guide.py dati.json /mnt/user-data/outputs/<citta>-guida.html
+```
+Leggi errori e avvisi: correggi gli errori; per ogni avviso decidi se è un problema reale (distanze, etichette mappa che si sovrappongono: cambia `label_pos`). Controlla in particolare l'avviso sulle parti della mappa Google (più di 11 punti) e verifica che l'HTML contenga la sezione "Il percorso su Google Maps" con tutte e tre le modalità e i link corretti dall'ultimo `--links`; se manca o è incompleta, correggi il JSON e rigenera. La pagina si apre con la sezione "Il percorso su Google Maps": schede A piedi / Mezzi pubblici / Auto, ognuna con mappa incorporata e pulsante "Apri in Google Maps". Poi presenta il file con `present_files`: questo passaggio è obbligatorio. Non pubblicarlo come artifact e non crearne altre versioni.
+
+### 7. Risposta finale (breve)
+In poche righe: il percorso (con i link Google Maps a piedi e auto, e il primo spostamento in mezzi pubblici; gli altri sono nella guida), cosa è stato verificato oggi e cosa no (orari a rischio, tappe chiuse, mappa Google non aperta qui, distanze stimate), e dove sta il file. Ricorda che le foto e la mappa Google si caricano da internet.
+
+## Note
+- Il modello legge tutto dal JSON: non servono modifiche al codice per nuove città.
+- La mappa incorporata di Google può non comparire; i pulsanti funzionano sempre. Non serve nessuna chiave API: la mappa usa i link di Google Maps con le coordinate delle tappe.
+- Linee e orari dei mezzi pubblici, traffico e parcheggi per l'auto non sono verificabili qui: Google Maps li calcola quando si apre il link.
+- Per cambiare modalità attive, scheda iniziale, tappe incluse o note usa i campi `modes`, `default_mode`, `route_ids`, `mode_notes` di `google` (vedi `references/schema.md`) e rigenera.
+- Dopo la consegna, le modifiche richieste dall'utente (spostare un pulsante, cambiare un testo) si fanno sul JSON e rigenerando, non a mano sull'HTML.
+<<<FINE FILE>>>
+
+<<<INIZIO FILE: guida-turistica/references/schema.md>>>
+# Schema del JSON della guida
+
+Esempio completo: `assets/esempio-rotterdam.json`. Tutti i testi sono semplice testo italiano; `**così**` produce grassetto. Non usare HTML.
+
+## Livello principale
+
+| Campo | Obbligatorio | Descrizione |
+|---|---|---|
+| `lang` | no | "it" di default |
+| `title` | sì | Titolo della scheda del browser |
+| `h1` | sì | Titolo grande della guida |
+| `intro` | sì | 2 frasi: cosa si vede, partenza e arrivo, data |
+| `facts` | no | Lista di `{"v":"10","l":"tappe"}` (es. tappe, km a piedi, orario, costo) |
+| `transit_label` | no | Nome dei mezzi pubblici nei tratti ("metro", "tram", "mezzi") |
+| `return_leg_label` | no | Etichetta del rientro sulla mappa schematica |
+| `return_leg` | no | `false` se non si rientra al punto di partenza |
+| `map` | no | `{"note": "...", "water": {"label","label_at":[lat,lon],"points":[[lat,lon],...]}}`: il fiume è facoltativo e schematico |
+| `google` | no | Mappa Google Maps dell'intero percorso e pulsanti: `modes`, `default_mode`, `route_ids`, `mode_notes`, `general_note`, `note`, `buttons` (vedi sotto). Se manca, tutto si genera da solo |
+| `lunch` | no | `{"title","intro","items":[{"t","d"}]}` |
+| `return` | no | `{"title","lead","items":[...]}`: rientro con i mezzi pubblici |
+| `tips` | no | Lista di consigli pratici (anche **grassetto**) |
+| `summary_note`, `photo_credit`, `footer`, `map_aria` | no | Testi opzionali |
+| `stops` | sì | Lista delle tappe, nell'ordine di visita |
+
+### Mappa Google Maps dell'intero percorso (`google`)
+La pagina si apre con la sezione "Il percorso su Google Maps": schede **A piedi**, **Mezzi pubblici**, **Auto** per l'intero percorso (tutte le tappe in ordine, con il rientro alla partenza se `return_leg` non è `false`). Nessun campo è obbligatorio: senza `google` la sezione si genera da sola dalle tappe.
+
+| Campo | Descrizione |
+|---|---|
+| `modes` | Modalità attive e il loro ordine, tra `walking`, `transit`, `driving` (default: tutte e tre) |
+| `default_mode` | Scheda aperta all'inizio (default: la prima di `modes`) |
+| `route_ids` | Id delle tappe incluse nella mappa, in ordine (default: tutte); utile per escludere una tappa opzionale |
+| `mode_notes` | Testi sotto la mappa per modalità: `{"walking":"...","transit":"...","driving":"..."}` (default: avvisi standard) |
+| `general_note` | Nota sotto le schede (default: "Le mappe si caricano da internet...") |
+| `note` | Testo sopra i pulsanti del percorso della guida (a piedi + mezzi pubblici) |
+
+Come si spezza il percorso (limiti di Google Maps): a piedi e auto in parti da 11 punti al massimo (9 tappe intermedie), con scelta della parte; mezzi pubblici una scheda per ogni spostamento tra due tappe, perché con i mezzi Google Maps non accetta tappe intermedie. `python scripts/build_guide.py --links dati.json` stampa tutti i link.
+
+`iframe_title` non è più usato: i titoli accessibili si generano da soli.
+
+### Pulsanti del percorso della guida (`google.buttons`)
+Sotto le schede c'è il blocco "Il percorso della guida: a piedi + mezzi pubblici" (solo se la guida ha tratti `leg: transit` oppure `google.buttons`).
+Ogni pulsante: `{"label","from_id","to_id","via_ids":[...],"mode":"walking"|"transit"}`.
+`via_ids` al massimo 9 (limite di Google Maps). I `from_id`, `to_id` e `via_ids` sono id di tappe. Per i tratti a piedi lunghi dividi in più pulsanti.
+
+## Tappa (`stops[]`)
+
+| Campo | Obbl. | Descrizione |
+|---|---|---|
+| `id` | sì | Slug unico (lettere minuscole, trattini): serve per i collegamenti |
+| `name` | sì | Nome mostrato. Il testo dopo " e " o " (" viene tagliato nelle etichette della mappa e della navigazione: "Witte Huis e Oude Haven" diventa "Witte Huis" |
+| `time` | sì | Arrivo previsto, `HH:MM`, in ordine crescente |
+| `dist` | sì | Dalla tappa precedente, es. `"0,8 km, 10 min"` oppure `"metro 25 min + 1 km a piedi"`; per la prima tappa `"partenza"` |
+| `lat`, `lon` | sì | Coordinate decimali |
+| `cid` o `url` | sì | `cid` Google Maps (da `places_search`) oppure un `url` completo (es. ricerca per coordinate) |
+| `hours` | sì | Orari per la data scelta; segnala se oggi è chiuso |
+| `price` | sì | Ingresso e costi, con distinzione tra esterno gratuito e interno a pagamento |
+| `photos` | no* | Lista di URL `https://` (di solito 2). Vuota per i luoghi sensibili |
+| `photo_note` | no* | Mostrata quando `photos` è vuoto (*obbligatoria in quel caso) |
+| `text` | sì | 2–3 paragrafi |
+| `shoot` | sì | Cosa fotografare e a quale ora/luce |
+| `next` | sì | Come proseguire verso la tappa successiva |
+| `along` | no | `{"zone": "...", "foto": ["...", "..."]}`: tratti lunghi interessanti |
+| `leg` | no | `"transit"` se il tratto che arriva a questa tappa è in metro/tram (disegnato tratteggiato); altrimenti a piedi |
+| `label_pos` | no | `right` (default), `left`, `above`, `below`: posizione dell'etichetta sulla mappa schematica |
+
+## Controlli dello script
+- Errori (la guida non viene generata): campi mancanti, `google.modes`/`default_mode`/`route_ids` non validi, id duplicati, orari non crescenti, URL foto non `https://`, pulsanti con id sconosciuti o più di 9 tappe intermedie.
+- Avvisi: tappe senza foto né `photo_note`, descrizioni troppo brevi, distanze dichiarate incoerenti con la linea d'aria, etichette della mappa che si sovrappongono, percorso Google Maps diviso in più parti (più di 11 punti).
+<<<FINE FILE>>>
+
+<<<INIZIO FILE: guida-turistica/scripts/build_guide.py>>>
+#!/usr/bin/env python3
+"""Genera una guida turistica HTML a partire da un file JSON di dati.
+
+Uso:
+  python build_guide.py dati.json guida.html     # controlla e genera
+  python build_guide.py --distances dati.json    # tabella distanze stimate tra le tappe
+  python build_guide.py --check dati.json        # solo controlli, nessun file
+  python build_guide.py --links dati.json        # link Google Maps dell'intero percorso (a piedi, mezzi, auto)
+
+Il modello (assets/template.html) legge tutto da un blocco JSON: qui si
+controlla che i dati siano coerenti e li si inserisce nel modello.
+"""
+import argparse, json, math, re, sys
+from urllib.parse import quote
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+TEMPLATE = HERE.parent / "assets" / "template.html"
+
+def haversine_km(a, b):
+    r = 6371.0
+    p1, p2 = math.radians(a["lat"]), math.radians(b["lat"])
+    dp, dl = p2 - p1, math.radians(b["lon"] - a["lon"])
+    h = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(h))
+
+def to_min(t):
+    m = re.fullmatch(r"(\d{1,2}):(\d{2})", t or "")
+    return int(m.group(1)) * 60 + int(m.group(2)) if m else None
+
+def first_km(text):
+    m = re.search(r"(\d+(?:[.,]\d+)?)\s*km", text or "")
+    return float(m.group(1).replace(",", ".")) if m else None
+
+MODES = {"walking": "A piedi", "transit": "Mezzi pubblici", "driving": "Auto"}
+
+def route_points(d):
+    """Punti dell'intero percorso: tutte le tappe (o google.route_ids) e il rientro alla partenza."""
+    by_id = {s.get("id"): s for s in d.get("stops") or []}
+    ids = (d.get("google") or {}).get("route_ids")
+    route = [by_id[i] for i in ids if i in by_id] if ids else list(d.get("stops") or [])
+    if d.get("return_leg") is not False and len(route) > 1:
+        route.append(route[0])
+    return [s for i, s in enumerate(route) if i == 0 or s is not route[i - 1]]
+
+def ll(s):
+    return f"{s['lat']:.4f},{s['lon']:.4f}"
+
+def dir_url(pts, mode):
+    via = "|".join(ll(s) for s in pts[1:-1])
+    u = f"https://www.google.com/maps/dir/?api=1&origin={ll(pts[0])}&destination={ll(pts[-1])}"
+    if via and mode != "transit":
+        u += f"&waypoints={quote(via, safe='')}"
+    return u + f"&travelmode={mode}"
+
+def segments(d, mode):
+    """Spezzoni per modalita': a piedi/auto max 11 punti (9 tappe intermedie), mezzi pubblici una coppia per volta."""
+    route = route_points(d)
+    if mode == "transit":
+        return [route[i:i + 2] for i in range(len(route) - 1)]
+    return [route[k:k + 11] for k in range(0, len(route) - 1, 10)]
+
+def print_links(d):
+    route = route_points(d)
+    print(f"Percorso completo: {len(route)} punti"
+          + (" (rientro alla partenza incluso)" if d.get("return_leg") is not False and len(route) > 1 else ""))
+    modes = (d.get("google") or {}).get("modes") or list(MODES)
+    for m in modes:
+        segs = segments(d, m)
+        print(f"\n## {MODES.get(m, m)} ({len(segs)} {('spostamento' if len(segs)==1 else 'spostamenti') if m == 'transit' else ('parte' if len(segs)==1 else 'parti')})")
+        for i, pts in enumerate(segs, 1):
+            print(f"{i}. {pts[0]['name'].split(' (')[0]} -> {pts[-1]['name'].split(' (')[0]}\n   {dir_url(pts, m)}")
+
+def check(d):
+    errors, warnings = [], []
+    for k in ("title", "h1", "intro", "stops"):
+        if not d.get(k):
+            errors.append(f"Campo obbligatorio mancante: {k}")
+    stops = d.get("stops") or []
+    ids = set()
+    prev_t = None
+    for i, s in enumerate(stops, 1):
+        n = f"Tappa {i} ({s.get('name', '?')})"
+        for k in ("id", "name", "time", "dist", "lat", "lon", "hours", "price", "text", "shoot", "next"):
+            if s.get(k) in (None, "", []):
+                errors.append(f"{n}: manca '{k}'")
+        if not (s.get("cid") or s.get("url")):
+            errors.append(f"{n}: serve 'cid' oppure 'url' per il link Google Maps")
+        if s.get("id") in ids:
+            errors.append(f"{n}: id duplicato '{s.get('id')}'")
+        ids.add(s.get("id"))
+        if not isinstance(s.get("lat"), (int, float)) or not isinstance(s.get("lon"), (int, float)):
+            errors.append(f"{n}: lat/lon devono essere numeri")
+        t = to_min(s.get("time"))
+        if t is None:
+            errors.append(f"{n}: orario non valido '{s.get('time')}' (usa HH:MM)")
+        elif prev_t is not None and t < prev_t:
+            errors.append(f"{n}: l'orario {s['time']} è precedente alla tappa prima")
+        prev_t = t if t is not None else prev_t
+        photos = s.get("photos") or []
+        if not photos and not s.get("photo_note"):
+            warnings.append(f"{n}: nessuna foto e nessuna 'photo_note'")
+        for u in photos:
+            if not str(u).startswith("https://"):
+                errors.append(f"{n}: URL foto non valido: {u}")
+        if len(s.get("text") or []) < 2:
+            warnings.append(f"{n}: descrizione molto breve (meno di 2 paragrafi)")
+    # distanze: confronto con la stima in linea d'aria
+    for a, b in zip(stops, stops[1:]):
+        if b.get("leg") == "transit":
+            continue
+        km = first_km(b.get("dist"))
+        if km:
+            air = haversine_km(a, b)
+            if air > 0.05 and not (0.8 * air <= km <= 2.2 * air + 0.2):
+                warnings.append(
+                    f"{b.get('name')}: distanza dichiarata {km} km, in linea d'aria {air:.2f} km (a piedi di solito 1.2-1.5x)")
+    # waypoint Google (max 9)
+    for b in (d.get("google") or {}).get("buttons") or []:
+        if len(b.get("via_ids") or []) > 9:
+            errors.append(f"Pulsante '{b.get('label')}': più di 9 tappe intermedie (limite Google Maps)")
+        for ref in [b.get("from_id"), b.get("to_id")] + list(b.get("via_ids") or []):
+            if ref not in ids:
+                errors.append(f"Pulsante '{b.get('label')}': id sconosciuto '{ref}'")
+    # mappa Google dell'intero percorso
+    g = d.get("google") or {}
+    for m in g.get("modes") or []:
+        if m not in MODES:
+            errors.append(f"google.modes: modalita' sconosciuta '{m}' (usa walking, transit, driving)")
+    if g.get("default_mode") and g["default_mode"] not in (g.get("modes") or list(MODES)):
+        errors.append(f"google.default_mode '{g['default_mode']}' non e' tra le modalita' attive")
+    for ref in g.get("route_ids") or []:
+        if ref not in ids:
+            errors.append(f"google.route_ids: id sconosciuto '{ref}'")
+    if len(stops) > 1 and not errors:
+        rp = route_points(d)
+        if len(rp) < 2:
+            warnings.append("google.route_ids: servono almeno 2 punti per la mappa dell'intero percorso")
+        elif len(rp) > 11:
+            warnings.append(f"Mappa Google: {len(rp)} punti, il percorso a piedi/auto sara' diviso in {len(segments(d, 'walking'))} parti (limite di 9 tappe intermedie per link)")
+    # sovrapposizione etichette sulla mappa schematica
+    if len(stops) > 1 and all(isinstance(s.get("lat"), (int, float)) for s in stops):
+        lats = [s["lat"] for s in stops]; lons = [s["lon"] for s in stops]
+        k = math.cos(math.radians((min(lats) + max(lats)) / 2))
+        span_x = (max(lons) - min(lons) + 0.006) * k
+        span_y = max(lats) - min(lats) + 0.004
+        pad, W = 70, 720
+        H = max(380, min(780, round((W - 2 * pad) * span_y / span_x + 2 * pad)))
+        sc = min((W - 2 * pad) / span_x, (H - 2 * pad) / span_y)
+        pts = [((s["lon"] - (min(lons) - 0.003)) * k * sc, (max(lats) + 0.002 - s["lat"]) * sc) for s in stops]
+        for i in range(len(stops)):
+            for j in range(i + 1, len(stops)):
+                dist = math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1])
+                if dist < 36:
+                    warnings.append(
+                        f"Mappa: tappe {i+1} e {j+1} troppo vicine ({dist:.0f}px): cambia 'label_pos' (right/left/above/below) e guarda l'anteprima")
+    return errors, warnings
+
+def print_distances(d):
+    stops = d["stops"]
+    print(f"{'Da':28} {'A':28} {'linea d aria':>12} {'a piedi ~1.3x':>14}")
+    tot = 0
+    for a, b in zip(stops, stops[1:]):
+        air = haversine_km(a, b)
+        tot += air * 1.3
+        print(f"{a['name'][:27]:28} {b['name'][:27]:28} {air:9.2f} km {air*1.3:11.2f} km")
+    print(f"Totale stimato a piedi (se tutto a piedi): {tot:.1f} km")
+
+def build(d, out):
+    tpl = TEMPLATE.read_text(encoding="utf-8")
+    blob = json.dumps(d, ensure_ascii=False).replace("</", "<\\/").replace("<!--", "<\\!--")
+    title = (d.get("title") or "").replace("&", "&amp;").replace("<", "&lt;")
+    html = tpl.replace("__TITLE__", title).replace("__GUIDE_JSON__", blob)
+    Path(out).write_text(html, encoding="utf-8")
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("json_file")
+    ap.add_argument("output", nargs="?")
+    ap.add_argument("--distances", action="store_true")
+    ap.add_argument("--check", action="store_true")
+    ap.add_argument("--links", action="store_true")
+    a = ap.parse_args()
+    d = json.loads(Path(a.json_file).read_text(encoding="utf-8"))
+    if a.distances:
+        print_distances(d); return 0
+    if a.links:
+        print_links(d); return 0
+    errors, warnings = check(d)
+    for w in warnings: print("AVVISO:", w)
+    for e in errors: print("ERRORE:", e)
+    if errors:
+        print(f"\n{len(errors)} errori: guida non generata."); return 1
+    if a.check:
+        print("Controlli superati."); return 0
+    if not a.output:
+        print("Indica il file di output."); return 2
+    build(d, a.output)
+    print(f"Guida generata: {a.output} ({len(d['stops'])} tappe, {len(warnings)} avvisi)")
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())
+<<<FINE FILE>>>
+
+<<<INIZIO FILE: guida-turistica/assets/template.html>>>
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Young+Serif&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --tile:#F5F7FB; --paper:#FFFFFF; --ink:#16213E; --muted:#56607A; --line:#D5DBEA;
+  --delft:#23408E; --delft-soft:#E4EAF7; --orange:#E8731A; --canal:#CFE0EE;
+  --serif:"Young Serif",Georgia,"Times New Roman",serif;
+  --sans:"Instrument Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root{--tile:#0F1730; --paper:#16213E; --ink:#EEF1FA; --muted:#A5AFCB; --line:#2A3760;
+    --delft:#8DA8F0; --delft-soft:#1D2B55; --orange:#F2913F; --canal:#1B2C57;}
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:64px}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{margin:0;background:var(--tile);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.6}
+a{color:var(--delft)}
+a:focus-visible,button:focus-visible{outline:3px solid var(--orange);outline-offset:2px}
+.wrap{max-width:980px;margin:0 auto;padding:0 20px}
+header.hero{background:var(--delft);color:#fff;padding:56px 0 44px}
+@media (prefers-color-scheme:dark){header.hero{background:#1B2C57}}
+.hero h1{font-family:var(--serif);font-weight:400;font-size:clamp(2.1rem,6vw,3.8rem);line-height:1.08;margin:0 0 14px;max-width:16em}
+.hero p{margin:0;max-width:38em;color:#DCE4FA;font-size:1.05rem}
+.facts{display:flex;flex-wrap:wrap;gap:10px 28px;margin-top:26px;color:#fff;font-weight:500}
+.facts span b{font-family:var(--serif);font-weight:400;font-size:1.5rem;margin-right:6px}
+nav.jump{position:sticky;top:0;z-index:5;background:var(--paper);border-bottom:1px solid var(--line)}
+nav.jump ul{list-style:none;margin:0;padding:8px 20px;display:flex;gap:6px;overflow-x:auto;max-width:980px;margin-inline:auto}
+nav.jump a{display:block;white-space:nowrap;padding:6px 12px;border-radius:999px;text-decoration:none;font-size:.9rem;font-weight:500;color:var(--ink);border:1px solid var(--line)}
+nav.jump a:hover{background:var(--delft-soft)}
+section{padding:44px 0 8px}
+h2{font-family:var(--serif);font-weight:400;font-size:clamp(1.6rem,4vw,2.2rem);line-height:1.15;margin:0 0 18px}
+.map-card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:14px}
+#map{width:100%;height:auto;display:block;max-height:78vh}
+.gmap{width:100%;height:min(70vh,560px);border:0;border-radius:10px;display:block;background:var(--canal)}
+.map-card .btn{margin:10px 8px 0 0}
+.map-note{font-size:.88rem;color:var(--muted);margin:10px 4px 0}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+.tabs button,.chips button{font:inherit;font-size:.92rem;font-weight:600;padding:8px 16px;border-radius:999px;border:1px solid var(--line);background:var(--paper);color:var(--ink);cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--delft);border-color:var(--delft);color:#fff}
+@media (prefers-color-scheme:dark){.tabs button[aria-selected="true"]{color:#0F1730}}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+.chips button{padding:4px 12px;font-size:.84rem;font-weight:500}
+.chips button[aria-pressed="true"]{background:var(--delft-soft);border-color:var(--delft)}
+.gm-sub{font-size:1rem;color:var(--delft);margin:22px 0 2px}
+table{width:100%;border-collapse:collapse;background:var(--paper);border:1px solid var(--line);border-radius:14px;overflow:hidden;font-size:.97rem}
+.tw{overflow-x:auto;border-radius:14px}
+th,td{padding:11px 14px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:var(--delft-soft);font-weight:600}
+tr:last-child td{border-bottom:0}
+td.t{font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:600}
+.stop{padding:48px 0 12px;border-top:1px solid var(--line);margin-top:36px}
+.stop:first-of-type{margin-top:0}
+.stop h2{display:flex;align-items:center;gap:14px}
+.stop h2{flex-wrap:wrap;row-gap:8px}
+.stop h2 .ttl{min-width:0}
+.btn-sm{margin:0;padding:6px 14px;font-size:.82rem;font-family:var(--sans);line-height:1.4;white-space:nowrap}
+.num{flex:none;display:inline-grid;place-items:center;width:42px;height:42px;border-radius:50%;background:var(--orange);color:#fff;font-family:var(--sans);font-weight:600;font-size:1.1rem}
+.photos{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 14px}
+.photos figure{margin:0;background:var(--canal);border-radius:12px;overflow:hidden;aspect-ratio:4/3}
+.photos img{width:100%;height:100%;object-fit:cover;display:block}
+.credit{font-size:.82rem;color:var(--muted);margin:0 0 16px}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:0 0 20px}
+.meta div{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-size:.93rem}
+.meta dt{font-weight:600;color:var(--delft);font-size:.85rem;margin:0 0 2px}
+.meta dd{margin:0}
+.stop p{max-width:66ch}
+.shoot{background:var(--paper);border:1px solid var(--line);border-left:4px solid var(--delft);border-radius:0 10px 10px 0;padding:12px 16px;max-width:66ch}
+.next{background:var(--delft-soft);border-left:4px solid var(--orange);border-radius:0 10px 10px 0;padding:12px 16px;max-width:66ch}
+.btn{display:inline-block;margin-top:6px;padding:9px 16px;border-radius:999px;background:var(--delft);color:#fff;text-decoration:none;font-weight:600;font-size:.93rem}
+@media (prefers-color-scheme:dark){.btn{color:#0F1730}}
+.btn:hover{filter:brightness(1.1)}
+ul.tips{padding-left:1.2em;max-width:66ch}
+ul.tips li{margin:6px 0}
+.along{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:12px 16px;max-width:66ch;margin:14px 0}.along h3{margin:0 0 6px;font-size:1rem;color:var(--delft)}.along p{margin:0 0 8px}.lunch{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+footer{padding:36px 0 56px;color:var(--muted);font-size:.9rem}
+.brandline{display:flex;align-items:center;gap:10px}
+.brandline img{display:block;height:36px;width:auto;border-radius:6px}
+.brandline span{font-size:.78rem;opacity:.85}
+header.hero .brandline{margin-bottom:22px;color:#DCE4FA}
+footer .brandline{margin-top:22px;opacity:.75}
+footer .brandline img{height:20px;border-radius:4px}
+footer .brandline span{font-size:.72rem;opacity:1}
+@media (max-width:560px){body{font-size:16px}.photos{grid-template-columns:1fr}}
+@media print{nav.jump{display:none}.stop{break-inside:avoid}}
+</style>
+</head>
+<body>
+
+<header class="hero"><div class="wrap brandline"><img src="https://cimento.it/tour/logoABS.png" alt="ABS - Antonio Billeci Solutions" onerror="this.style.display='none'"><span>ABS - Utility e Software per uso personale</span></div><div class="wrap" id="hero"></div></header>
+
+<nav class="jump" aria-label="Vai alla tappa"><ul id="jump"></ul></nav>
+
+<main class="wrap">
+
+<section id="google-maps">
+  <h2>Il percorso su Google Maps</h2>
+  <div class="map-card" id="gm-card"></div>
+</section>
+
+<section id="mappa">
+  <h2>Il percorso in schema</h2>
+  <div class="map-card">
+    <svg id="map" role="img"></svg>
+    <p class="map-note" id="map-note"></p>
+  </div>
+</section>
+
+<section id="riepilogo">
+  <h2>In sintesi</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Ora</th><th>Tappa</th><th>Dalla precedente</th></tr></thead>
+    <tbody id="summary"></tbody>
+  </table></div>
+  <p class="credit" style="margin-top:10px" id="summary-note"></p>
+</section>
+
+<div id="stops"></div>
+
+<section id="pranzo" hidden></section>
+<section id="rientro" hidden></section>
+<section id="consigli" hidden></section>
+
+</main>
+
+<footer><div class="wrap" id="footer"></div><div class="wrap brandline"><img src="https://cimento.it/tour/logoABS.png" alt="ABS - Antonio Billeci Solutions" onerror="this.style.display='none'"><span>ABS - Utility e Software per uso personale</span></div></footer>
+
+<script id="guide-data" type="application/json">__GUIDE_JSON__</script>
+<script>
+const D = JSON.parse(document.getElementById("guide-data").textContent);
+const STOPS = D.stops;
+const $ = s => document.querySelector(s);
+const el = (t, a={}, h="") => { const e=document.createElement(t); for(const k in a) e.setAttribute(k,a[k]); e.innerHTML=h; return e; };
+// Testo semplice -> HTML sicuro; **grassetto** permesso
+const esc = t => String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>");
+const short = s => s.name.split(" (")[0].split(" e ")[0];
+const ll = s => s.lat.toFixed(4)+","+s.lon.toFixed(4);
+const mapsLink = s => s.url || `https://maps.google.com/?cid=${s.cid}`;
+const byId = id => STOPS.find(s=>s.id===id);
+const isTransit = s => s.leg==="transit";
+
+document.documentElement.lang = D.lang || "it";
+document.title = D.title;
+
+// Hero
+$("#hero").innerHTML = `<h1>${esc(D.h1)}</h1><p>${esc(D.intro)}</p><div class="facts">${(D.facts||[]).map(f=>`<span><b>${esc(f.v)}</b>${esc(f.l||"")}</span>`).join("")}</div>`;
+
+// Mappa schematica: testo
+$("#map").setAttribute("aria-label", D.map_aria || ("Mappa schematica del percorso con le "+STOPS.length+" tappe"));
+$("#map-note").textContent = (D.map && D.map.note) || "Mappa schematica in scala approssimata: le linee uniscono le tappe in ordine e non seguono le strade. Ogni tappa ha il link a Google Maps per la navigazione reale.";
+
+// Google Maps: mappa dell'intero percorso (a piedi / mezzi pubblici / auto)
+(function(){
+  const G = D.google || {};
+  const MODES = {
+    walking:{label:"A piedi", flag:"w", note:"Tutto il giro a piedi, nell'ordine di visita. Con più di 10 punti Google Maps divide il percorso in parti: scegli la parte qui sopra."},
+    transit:{label:"Mezzi pubblici", flag:"r", note:"Con i mezzi pubblici Google Maps non accetta tappe intermedie: ogni spostamento tra due tappe è una scheda a sé (scegli la coppia qui sopra). Controlla linee e orari reali nel giorno della visita."},
+    driving:{label:"Auto", flag:"d", note:"Percorso in auto da una tappa all'altra. Controlla zone a traffico limitato, divieti di sosta e parcheggi vicino alle tappe: non sono verificati."}
+  };
+  const notes = G.mode_notes || {};
+  const num = s => STOPS.indexOf(s)+1;
+  const dirUrl = (pts,mode) => {
+    const via = pts.slice(1,-1).map(ll).join("|");
+    return `https://www.google.com/maps/dir/?api=1&origin=${ll(pts[0])}&destination=${ll(pts[pts.length-1])}`+(via&&mode!=="transit"?`&waypoints=${encodeURIComponent(via)}`:"")+`&travelmode=${mode}`;
+  };
+  const embedUrl = (pts,mode) => `https://www.google.com/maps?output=embed&dirflg=${MODES[mode].flag}&saddr=${ll(pts[0])}&daddr=${pts.slice(1).map(ll).join("+to:")}`;
+
+  // Punti dell'intero percorso: tutte le tappe (o G.route_ids) e il rientro alla partenza
+  let route = (G.route_ids ? G.route_ids.map(byId) : STOPS).filter(Boolean);
+  if(D.return_leg!==false && route.length>1) route = route.concat([route[0]]);
+  route = route.filter((s,i)=>i===0 || s!==route[i-1]);
+
+  const segments = mode => {
+    const out = [];
+    if(mode==="transit"){
+      for(let i=0;i<route.length-1;i++) out.push({pts:[route[i],route[i+1]], label:`${num(route[i])} → ${num(route[i+1])}`, title:`${short(route[i])} → ${short(route[i+1])}`});
+    } else {
+      for(let k=0;k<route.length-1;k+=10){
+        const pts = route.slice(k,k+11);
+        out.push({pts, label:`Parte ${k/10+1}: ${num(pts[0])} → ${num(pts[pts.length-1])}`, title:`${short(pts[0])} → ${short(pts[pts.length-1])}`});
+      }
+    }
+    return out;
+  };
+
+  const card = $("#gm-card");
+  const tabs = el("div",{class:"tabs",role:"tablist","aria-label":"Come ti sposti"});
+  const panels = el("div");
+  card.append(tabs, panels);
+  const modes = (G.modes||["walking","transit","driving"]).filter(m=>MODES[m] && segments(m).length);
+  const ui = {};
+
+  const activate = (m, focus) => {
+    modes.forEach(k=>{
+      const on = k===m;
+      ui[k].tab.setAttribute("aria-selected", on);
+      ui[k].tab.tabIndex = on ? 0 : -1;
+      ui[k].panel.hidden = !on;
+    });
+    if(!ui[m].ready){ ui[m].show(0); ui[m].ready = true; }
+    if(focus) ui[m].tab.focus();
+  };
+
+  modes.forEach((m,mi)=>{
+    const M = MODES[m], segs = segments(m);
+    const tab = el("button",{type:"button",role:"tab",id:"gm-tab-"+m,"aria-controls":"gm-panel-"+m,"aria-selected":"false",tabindex:"-1"},esc(M.label));
+    const panel = el("div",{role:"tabpanel",id:"gm-panel-"+m,"aria-labelledby":"gm-tab-"+m,hidden:""});
+    const chips = segs.length>1 ? el("div",{class:"chips",role:"group","aria-label":m==="transit"?"Spostamento tra due tappe":"Parte del percorso"}) : null;
+    const frame = el("iframe",{class:"gmap",loading:"lazy",referrerpolicy:"no-referrer-when-downgrade",allowfullscreen:""});
+    const open = el("a",{class:"btn",target:"_blank",rel:"noopener"});
+    const show = i => {
+      const sg = segs[i];
+      frame.src = embedUrl(sg.pts,m);
+      frame.title = `Google Maps, ${M.label.toLowerCase()}: ${sg.title}`;
+      open.href = dirUrl(sg.pts,m);
+      open.textContent = segs.length>1 ? `Apri in Google Maps: ${sg.label}` : `Apri in Google Maps · ${M.label}`;
+      if(chips) [...chips.children].forEach((c,k)=>c.setAttribute("aria-pressed", k===i));
+    };
+    if(chips) segs.forEach((sg,i)=>{
+      const c = el("button",{type:"button","aria-pressed":"false",title:sg.title},esc(sg.label));
+      c.addEventListener("click",()=>show(i));
+      chips.append(c);
+    });
+    if(chips) panel.append(chips);
+    panel.append(frame, open, el("p",{class:"map-note"},esc(notes[m]||M.note)));
+    tab.addEventListener("click",()=>activate(m));
+    tab.addEventListener("keydown",e=>{
+      const d = e.key==="ArrowRight"?1 : e.key==="ArrowLeft"?-1 : 0;
+      if(d){ e.preventDefault(); activate(modes[(mi+d+modes.length)%modes.length], true); }
+    });
+    tabs.append(tab); panels.append(panel);
+    ui[m] = {tab, panel, show, ready:false};
+  });
+  if(modes.length) activate(modes.includes(G.default_mode)?G.default_mode:modes[0]);
+  card.append(el("p",{class:"map-note"},esc(G.general_note||"Le mappe si caricano da internet. Se quella incorporata non compare, usa il pulsante: si apre Google Maps.")));
+
+  // Percorso della guida (a piedi + mezzi pubblici sui tratti lunghi e per il rientro)
+  let btns = G.buttons;
+  if(!btns){
+    btns = [];
+    let start = -1;
+    for(let i=1;i<STOPS.length;i++){ if(!isTransit(STOPS[i])){ start=i-1; break; } }
+    if(start>=0){
+      let end=start+1; while(end+1<STOPS.length && !isTransit(STOPS[end+1])) end++;
+      const run = STOPS.slice(start,end+1);
+      for(let k=0;k<run.length-1;k+=9){
+        const chunk = run.slice(k,k+10);
+        btns.push({label: run.length>10 ? `Percorso a piedi, parte ${k/9+1}` : "Apri il percorso a piedi in Google Maps", from_id:chunk[0].id, to_id:chunk[chunk.length-1].id, via_ids:chunk.slice(1,-1).map(x=>x.id), mode:"walking"});
+      }
+    }
+    for(let i=1;i<STOPS.length;i++){
+      if(isTransit(STOPS[i])){ let j=i; while(j+1<STOPS.length && isTransit(STOPS[j+1])) j++;
+        btns.push({label:`Andata in ${D.transit_label||"mezzi"}: ${short(STOPS[i-1])} → ${short(STOPS[j])}`, from_id:STOPS[i-1].id, to_id:STOPS[j].id, mode:"transit"}); i=j; }
+    }
+    if(D.return_leg!==false && STOPS.length>1){
+      btns.push({label:`Rientro: ${short(STOPS[STOPS.length-1])} → ${short(STOPS[0])}`, from_id:STOPS[STOPS.length-1].id, to_id:STOPS[0].id, mode:"transit"});
+    }
+  }
+  if(G.buttons || STOPS.some(isTransit)){
+    const links = btns.map(b=>{
+      const o=byId(b.from_id), d=byId(b.to_id);
+      const pts=[o].concat((b.via_ids||[]).map(byId),[d]);
+      return `<a class="btn" target="_blank" rel="noopener" href="${dirUrl(pts,b.mode||"walking").replace(/&/g,"&amp;")}">${esc(b.label)}</a>`;
+    }).join("");
+    card.append(el("h3",{class:"gm-sub"},"Il percorso della guida: a piedi + mezzi pubblici"));
+    if(G.note) card.append(el("p",{class:"map-note"},esc(G.note)));
+    card.append(el("div",{},links));
+  }
+})();
+
+$("#summary-note").textContent = D.summary_note || "Distanze stimate a piedi sul percorso più diretto. Gli orari sono indicativi e lasciano margine per soste, foto e pranzo.";
+
+// Indice, riepilogo, sezioni
+STOPS.forEach((s,i)=>{
+  $("#jump").append(el("li",{},`<a href="#${s.id}">${i+1}. ${esc(short(s))}</a>`));
+  $("#summary").append(el("tr",{},`<td class="t">${esc(s.time)}</td><td><a href="#${s.id}">${esc(s.name)}</a></td><td>${esc(s.dist)}</td>`));
+  const photos = (s.photos||[]).map((u,k)=>`<figure><img src="${esc(u)}" alt="${esc(s.name)}, foto ${k+1}" loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('figure').style.display='none'"></figure>`).join("");
+  const sec = el("section",{id:s.id,class:"stop"});
+  sec.innerHTML = `
+    <h2><span class="num" aria-hidden="true">${i+1}</span><span class="ttl">${esc(s.name)}</span><a class="btn btn-sm" href="${esc(mapsLink(s))}" target="_blank" rel="noopener">Apri su Google Maps</a></h2>
+    ${(s.photos||[]).length?`<div class="photos">${photos}</div><p class="credit">${esc(D.photo_credit||"Foto: Google Maps, contributi degli utenti.")}</p>`:(s.photo_note?`<p class="credit">${esc(s.photo_note)}</p>`:"")}
+    <dl class="meta">
+      <div><dt>Arrivo previsto</dt><dd>${esc(s.time)} (${esc(s.dist)})</dd></div>
+      <div><dt>Orari</dt><dd>${esc(s.hours)}</dd></div>
+      <div><dt>Ingresso</dt><dd>${esc(s.price)}</dd></div>
+      <div><dt>Posizione</dt><dd>${s.lat.toFixed(4)}, ${s.lon.toFixed(4)}</dd></div>
+    </dl>
+    ${s.text.map(p=>`<p>${esc(p)}</p>`).join("")}
+    <p class="shoot"><strong>Cosa fotografare.</strong> ${esc(s.shoot)}</p>
+    <p class="next"><strong>Come proseguire.</strong> ${esc(s.next)}</p>
+    ${s.along?`<div class="along"><h3>Lungo la strada</h3><p>${esc(s.along.zone)}</p><p><strong>Punti fotografici.</strong></p><ul class="tips">${s.along.foto.map(f=>`<li>${esc(f)}</li>`).join("")}</ul></div>`:""}`;
+  $("#stops").append(sec);
+});
+
+// Sezioni finali opzionali
+if(D.lunch){ const s=$("#pranzo"); s.hidden=false; s.innerHTML=`<h2>${esc(D.lunch.title||"Dove pranzare spendendo poco")}</h2><p>${esc(D.lunch.intro||"")}</p><dl class="meta lunch">${D.lunch.items.map(i=>`<div><dt>${esc(i.t)}</dt><dd>${esc(i.d)}</dd></div>`).join("")}</dl>`; }
+if(D.return){ const s=$("#rientro"); s.hidden=false; s.innerHTML=`<h2>${esc(D.return.title||"Rientro con i mezzi pubblici")}</h2><p>${esc(D.return.lead||"")}</p><ul class="tips">${(D.return.items||[]).map(i=>`<li>${esc(i)}</li>`).join("")}</ul>`; }
+if(D.tips){ const s=$("#consigli"); s.hidden=false; s.innerHTML=`<h2>Consigli pratici</h2><ul class="tips">${D.tips.map(i=>`<li>${esc(i)}</li>`).join("")}</ul>`; }
+$("#footer").textContent = D.footer || "Foto: Google Maps, contributi degli utenti. Le immagini si caricano da internet: se sei offline non compaiono. Orari e prezzi possono cambiare.";
+
+// Mappa schematica
+(function(){
+  const pad=70, W=720;
+  const lats=STOPS.map(s=>s.lat), lons=STOPS.map(s=>s.lon);
+  const midLat=(Math.min(...lats)+Math.max(...lats))/2;
+  const k=Math.cos(midLat*Math.PI/180);
+  const minLat=Math.min(...lats)-0.002, maxLat=Math.max(...lats)+0.002;
+  const minLon=Math.min(...lons)-0.003, maxLon=Math.max(...lons)+0.003;
+  const spanX=(maxLon-minLon)*k, spanY=maxLat-minLat;
+  const H=Math.max(380,Math.min(780,Math.round((W-2*pad)*spanY/spanX+2*pad)));
+  const sc=Math.min((W-2*pad)/spanX,(H-2*pad)/spanY);
+  const ox=(W-spanX*sc)/2, oy=(H-spanY*sc)/2;
+  const Pll=(lat,lon)=>[ox+(lon-minLon)*k*sc, oy+(maxLat-lat)*sc];
+  const pts=STOPS.map(s=>Pll(s.lat,s.lon));
+  const svg=$("#map"); svg.setAttribute("viewBox",`0 0 ${W} ${H}`);
+  let h=`<rect width="${W}" height="${H}" rx="10" fill="var(--canal)"/>`;
+  const wt=D.map && D.map.water;
+  if(wt && wt.points && wt.points.length>1){
+    const w=wt.points.map(p=>Pll(p[0],p[1]));
+    h+=`<polyline points="${w.map(p=>p.join(",")).join(" ")}" fill="none" stroke="var(--tile)" stroke-width="22" stroke-linecap="round" stroke-linejoin="round" opacity=".85"/>`;
+    if(wt.label && wt.label_at){ const lm=Pll(wt.label_at[0],wt.label_at[1]); h+=`<text x="${lm[0]}" y="${lm[1]}" font-size="13" fill="var(--muted)" font-style="italic" font-family="var(--sans)">${esc(wt.label)}</text>`; }
+  }
+  const dashed=(a,b)=>`<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="var(--delft)" stroke-width="3.5" stroke-dasharray="3 9" stroke-linecap="round"/>`;
+  for(let i=1;i<STOPS.length;i++){
+    const a=pts[i-1], b=pts[i];
+    h+= isTransit(STOPS[i]) ? dashed(a,b) : `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="var(--orange)" stroke-width="4" stroke-linecap="round"/>`;
+  }
+  if(D.return_leg!==false && STOPS.length>1){
+    const a=pts[pts.length-1], b=pts[0];
+    h+=dashed(a,b)+`<text x="${(a[0]+b[0])/2+10}" y="${(a[1]+b[1])/2-6}" font-size="12.5" fill="var(--delft)" font-weight="600" font-family="var(--sans)">${esc(D.return_leg_label||"rientro")}</text>`;
+  }
+  STOPS.forEach((s,i)=>{
+    const [x,y]=pts[i];
+    let tx=x+22, ty=y+5, anchor="start";
+    const pos=s.label_pos||"right";
+    if(pos==="left"){tx=x-22;anchor="end";}
+    if(pos==="above"){tx=x;ty=y-24;anchor="middle";}
+    if(pos==="below"){tx=x;ty=y+36;anchor="middle";}
+    h+=`<a href="#${s.id}"><circle cx="${x}" cy="${y}" r="15" fill="var(--delft)" stroke="var(--paper)" stroke-width="3"/>
+    <text x="${x}" y="${y+5}" text-anchor="middle" font-size="15" font-weight="700" fill="#fff" font-family="var(--sans)">${i+1}</text>
+    <text x="${tx}" y="${ty}" text-anchor="${anchor}" font-size="15" font-weight="600" fill="var(--ink)" font-family="var(--sans)" paint-order="stroke" stroke="var(--canal)" stroke-width="4">${esc(short(s))}</text></a>`;
+  });
+  h+=`<g transform="translate(${W-44},44)"><circle r="20" fill="var(--paper)" stroke="var(--line)"/><path d="M0,-13 L6,8 L0,4 L-6,8 Z" fill="var(--delft)"/><text y="-22" text-anchor="middle" font-size="11" fill="var(--muted)" font-family="var(--sans)" font-weight="600">N</text></g>`;
+  h+=`<g transform="translate(24,${H-30})" font-family="var(--sans)" font-size="13" fill="var(--ink)"><line x1="0" y1="0" x2="30" y2="0" stroke="var(--orange)" stroke-width="4" stroke-linecap="round"/><text x="38" y="4">a piedi</text><line x1="110" y1="0" x2="140" y2="0" stroke="var(--delft)" stroke-width="3.5" stroke-dasharray="3 9" stroke-linecap="round"/><text x="148" y="4">${esc(D.transit_label||"mezzi")}</text></g>`;
+  svg.innerHTML=h;
+})();
+</script>
+</body>
+</html>
+<<<FINE FILE>>>
+
+<<<INIZIO FILE: guida-turistica/assets/esempio-rotterdam.json>>>
+{
+ "lang": "it",
+ "title": "Rotterdam a piedi: la città rimasta e le isole",
+ "h1": "Rotterdam a piedi: il passato rimasto e il giro delle isole",
+ "intro": "Dieci tappe dalla Delfshaven del Seicento al fiume Maas, tra pochi monumenti sopravvissuti al 1940 e i ponti e le penisole di Kop van Zuid. Partenza e arrivo a Rotterdam Centraal, sabato 31 ottobre 2026.",
+ "facts": [
+  {
+   "v": "10",
+   "l": "tappe"
+  },
+  {
+   "v": "12 km",
+   "l": "a piedi"
+  },
+  {
+   "v": "10–18",
+   "l": "orario"
+  },
+  {
+   "v": "Gratuito",
+   "l": ""
+  }
+ ],
+ "transit_label": "metro",
+ "return_leg_label": "rientro in metro",
+ "map": {
+  "water": {
+   "label": "Nieuwe Maas",
+   "label_at": [
+    51.9112,
+    4.458
+   ],
+   "points": [
+    [
+     51.903,
+     4.43
+    ],
+    [
+     51.905,
+     4.448
+    ],
+    [
+     51.9075,
+     4.47
+    ],
+    [
+     51.9095,
+     4.486
+    ],
+    [
+     51.9105,
+     4.501
+    ],
+    [
+     51.9125,
+     4.516
+    ]
+   ]
+  },
+  "note": "Mappa schematica in scala approssimata: le linee uniscono le tappe in ordine e non seguono le strade. Ogni tappa ha il link a Google Maps per la navigazione reale. Le linee blu tratteggiate sono i tratti in metro, compreso il rientro."
+ },
+ "google": {
+  "iframe_title": "Percorso a piedi su Google Maps da Stadhuis a Noordereiland",
+  "note": "Percorso a piedi del centro e delle isole: Stadhuis, Schielandshuis, Laurenskerk, Witte Huis, Erasmusbrug, Hotel New York, Katendrecht, Noordereiland. Il giro a Delfshaven e i tratti in metro sono nei pulsanti qui sotto. La mappa si carica da internet.",
+  "buttons": [
+   {
+    "label": "Apri il percorso a piedi in Google Maps",
+    "from_id": "stadhuis",
+    "to_id": "noordereiland",
+    "via_ids": [
+     "schielandshuis",
+     "laurenskerk",
+     "witte-huis",
+     "erasmusbrug",
+     "wilhelminapier",
+     "katendrecht"
+    ],
+    "mode": "walking"
+   },
+   {
+    "label": "Andata in metro: Centraal → Delfshaven",
+    "from_id": "centraal",
+    "to_id": "delfshaven",
+    "mode": "transit"
+   },
+   {
+    "label": "Rientro: Noordereiland → Centraal",
+    "from_id": "noordereiland",
+    "to_id": "centraal",
+    "mode": "transit"
+   }
+  ]
+ },
+ "lunch": {
+  "title": "Dove pranzare spendendo poco",
+  "intro": "Intorno alle 13:30 sei alla Laurenskerk. Ecco le opzioni nel raggio di pochi passi; i prezzi cambiano, quindi controlla sul posto.",
+  "items": [
+   {
+    "t": "Mercato Binnenrotte (martedì e sabato)",
+    "d": "Oggi è sabato: il mercato all’aperto si trova a pochi passi dalla Laurenskerk, con banchi di cibo e prodotti freschi. È la scelta più economica per un pranzo veloce."
+   },
+   {
+    "t": "Markthal",
+    "d": "Il mercato coperto sotto l’arco decorato, a due passi dalla chiesa. È un edificio moderno, ma l’ingresso è libero e ci sono molti banchi di cibo; i prezzi variano."
+   },
+   {
+    "t": "Supermercato Albert Heijn",
+    "d": "Panino, frutta e una bevanda per un pranzo al sacco da mangiare lungo l’Oude Haven, se non piove."
+   },
+   {
+    "t": "Fenix Food Factory (Katendrecht)",
+    "d": "Meglio per una pausa con birra o snack nel pomeriggio che per un pranzo: le recensioni segnalano prezzi alti."
+   }
+  ]
+ },
+ "return": {
+  "title": "Rientro con i mezzi pubblici",
+  "lead": "**Dal Willemsbrug a Rotterdam Centraal in metro**, circa 15 minuti in tutto, senza contare la camminata fino alla stazione.",
+  "items": [
+   "Dopo il Willemsbrug cammina circa 700 m fino alla stazione **Blaak**.",
+   "Da Blaak prendi la metro A, B o C per una fermata fino a **Beurs**, poi la linea D o E verso Rotterdam Centraal: due fermate.",
+   "Paga con carta contactless o telefono: avvicinala al lettore sia salendo sia scendendo.",
+   "Se sei stanco, puoi anche saltare l’ultimo tratto a piedi e salire in metro alla fermata più vicina al ponte."
+  ]
+ },
+ "tips": [
+  "**Distanza:** circa 12 km tra camminate e due tratti in metro. Se serve recuperare tempo e gambe, salta Katendrecht (circa 2,5 km in meno).",
+  "**Scarpe comode:** molti tratti sono lungo il fiume, quasi sempre in piano, con vento.",
+  "**Abbigliamento:** a fine ottobre il tempo è variabile e lungo il fiume fa freddo; porta una giacca impermeabile.",
+  "**Orari di oggi (sabato 31 ottobre):** Stadhuis chiuso all’interno; Laurenskerk risulta chiusa su Google Maps; il Fenix e l’Hotel New York sono aperti. Verifica sempre prima di andare.",
+  "**Biciclette:** a Rotterdam sono molto numerose; guarda sempre prima di attraversare le piste ciclabili."
+ ],
+ "footer": "Foto: Google Maps, contributi degli utenti. Le immagini si caricano da internet: se sei offline non compaiono. Orari e prezzi sono quelli trovati il 31 ottobre 2026 e possono cambiare.",
+ "stops": [
+  {
+   "id": "centraal",
+   "name": "Rotterdam Centraal",
+   "time": "10:00",
+   "dist": "partenza",
+   "lat": 51.9243,
+   "lon": 4.4699,
+   "cid": "13007313067894585141",
+   "hours": "Stazione sempre accessibile",
+   "price": "Gratuito",
+   "photos": [
+    "https://lh3.googleusercontent.com/grass-cs/AABkmLexasAhEw9etPWvESkftAFUhmoPX9TEtD_Iz2LT9cWW0uyZb-48x32KYj3SF_R8hlWm24D_KEAdLjOKu2LesUmfxkshFvZ1eGGH5VlXDfE2nq8XxnOZp4PqaJUiYG_SQgxhNaXWcpZX9RRA=s4800-w800-h600",
+    "https://lh3.googleusercontent.com/grass-cs/AABkmLcYWPd-bEQRKW8OesAFlHbECmlgE9twHm_FijhLlMWZgJbC9-bgKkfrbBseStgBzdop8mTUWcGgYrB3yYyroP0V0hleV-hqmoKfuVS7PRr---yS1TeAiALGZPuwRlOOMXT-ZCsO5A=s4800-w800-h600"
+   ],
+   "text": [
+    "La stazione è il punto di partenza della giornata e il contrario di ciò che vedrai nelle prossime ore: un edificio contemporaneo, con un tetto spigoloso e inclinato che si proietta sulla piazza. Il nuovo Centraal è stato inaugurato nel 2014 al posto della vecchia stazione ed è uno dei grandi nodi ferroviari dei Paesi Bassi, con treni nazionali e internazionali, tram, autobus e le linee di metro D ed E.",
+    "Per arrivare a Delfshaven, prima tappa della mattina, prendi la metro D fino a Beurs e lì cambia con la linea A, B o C in direzione ovest: in tutto circa 25 minuti. Alla fermata Delfshaven si sale in superficie e la città vecchia è a poco più di un chilometro a piedi.",
+    "Per i mezzi usa carta contactless o telefono: avvicinala al lettore sia salendo sia scendendo. Se parti in anticipo, i bar e i negozi della stazione sono aperti presto e ti permettono di comprare acqua e uno spuntino."
+   ],
+   "shoot": "L’esterno della stazione dalla piazza, con il tetto inclinato che riflette il cielo. Nelle giornate di sole il riflesso rende lo scatto più forte; evita di inquadrare i viaggiatori da vicino.",
+   "next": "Scendi in metro: linea D fino a Beurs, poi linea A, B o C fino a Delfshaven.",
+   "label_pos": "above"
+  },
+  {
+   "id": "delfshaven",
+   "name": "Delfshaven e la Voorhaven",
+   "time": "10:45",
+   "dist": "metro 25 min + 1 km a piedi",
+   "lat": 51.9066,
+   "lon": 4.4487,
+   "cid": "12252237174324181403",
+   "hours": "Quartiere sempre accessibile (negozi e chiese con orari propri)",
+   "price": "Gratuito",
+   "photos": [
+    "https://lh3.googleusercontent.com/grass-cs/AABkmLerS99_kYiUI04GzP1KGs_hAt2CbDQzEwYovb3-pyjLlIwuwfKiyH_POROgtVUfAHl-g_B-6KHW5azKRN-qfPDftvB0dbSv8IlCDpn7hPajoFLfWRlYin8IazcTIMK2OyiW0Chq=s4800-w800-h600",
+    "https://lh3.googleusercontent.com/grass-cs/AABkmLfIoatHfiADRZcsKPqrnV0DS-8LuYSsD1MhGEKTKpaAMmmwqwQ3ItgcTFG_tHlkzvRZUG-oibRVDKFqs76KzUmJzET2OhkoRbNyM85auVAQOW9nYVUcVmME_NJvU84zs-i7IUeK-g=s4800-w800-h600"
+   ],
+   "text": [
+    "Delfshaven è il pezzo di Rotterdam che si è salvato. Il bombardamento del 14 maggio 1940 distrusse quasi tutto il centro, ma questo quartiere sul lato ovest della città rimase in piedi e oggi conserva l’aspetto di un porticciolo del Seicento e del Settecento: canali stretti, barche storiche ormeggiate, case a facciata stretta con i frontoni a gradini, e piccoli caffè sul molo. Fino alla fine dell’Ottocento era un comune a sé, con il proprio porto sulla Maas, poi fu inglobato nella città.",
+    "Il luogo più celebre è la Voorhaven, il canale principale, che porta fino all’Aelbrechtskolk, un porticciolo pittoresco considerato uno dei pochi angoli di città vecchia sopravvissuti al 1940. Qui sorge la Pelgrimvaderskerk, la chiesa da cui nel 1620 partirono i Padri Pellegrini, i futuri coloni del Mayflower, diretti in America dopo una tappa in Inghilterra. Nel quartiere si vede anche un mulino a vento, che richiama il passato produttivo di Delfshaven.",
+    "Passa con calma, perché il fascino è nelle piccole cose: gli ormeggi, le insegne, le finestre con i vasi di fiori. Considera circa un’ora e mezza di giro, più il rientro alla metro di 1 km. Camminare qui è gratuito: ti fermi a un caffè solo se ti va."
+   ],
+   "shoot": "L’Aelbrechtskolk dal ponte, con le barche e le facciate che si specchiano nell’acqua, e la Voorhaven in prospettiva fino al mulino. La luce migliore è quella obliqua del mattino; i vetri dei negozi riflettono poco quando il cielo è coperto.",
+   "next": "Torna alla fermata Delfshaven (circa 1 km passando dalla Voorhaven) e prendi la metro A, B o C fino a Beurs; da lì il Stadhuis è a 400 m a piedi.",
+   "leg": "transit"
+  },
+  {
+   "id": "stadhuis",
+   "name": "Stadhuis e Coolsingel",
+   "time": "12:35",
+   "dist": "metro 10 min + 0,4 km",
+   "lat": 51.9228,
+   "lon": 4.4793,
+   "cid": "14643177585642387242",
+   "hours": "Lun–ven 8:30–17:00; oggi (sabato) chiuso, esterno libero",
+   "price": "Gratuito (esterno)",
+   "photos": [
+    "https://lh3.googleusercontent.com/grass-cs/AABkmLc_brRqdMNAGNd4ncMGWXloTYjcKFFD9FG4tGcdiUyMb7Hdm-BZVlY6hWKbOdqyV0Qfv-tm0EwWOIZ54ADYVFpRKtdL23nJ_mlHd_ZMHmz9pLHZco54b43_8I7IpS_0e_fcK0ddGA=s4800-w800-h600",
+    "https://lh3.googleusercontent.com/grass-cs/AABkmLfOi211eEo7Qg6ysKyL1dOGkgwAED7TOAc7-e4ctN6SRMz99lM1TcF14veKRGpn4DL5284XKWx2pH4LskeqvS7iBwzeCXjQrQ96V_ceUpQOKp1lEAr8FAIueKTwHnX7lVlaiaaa=s4800-w800-h600"
+   ],
+   "text": [
+    "Il municipio di Rotterdam è uno dei pochi edifici del centro che attraversò indenne il bombardamento del 1940, mentre tutto intorno la città bruciava. Fu costruito tra il 1914 e il 1920 su progetto di Henri Evers: la prima pietra fu posta nel 1915 dalla regina Guglielmina. Lo stile è un eclettico Beaux-Arts con influenze bizantine, romaniche e Art Déco: facciata simmetrica, ricca di sculture, con una torre dell’orologio al centro.",
+    "L’edificio ha una pianta articolata attorno a un giardino interno: una strada pubblica lo attraversa in galleria. Il municipio è aperto al pubblico dal lunedì al venerdì (8:30–17:00); oggi, sabato, è chiuso e ti limiti all’esterno. Davanti, lo Stadhuisplein è la piazza dove si affacciano locali e un gruppo di sculture in bronzo, molto apprezzato nelle recensioni.",
+    "Nelle immediate vicinanze, sempre sul Coolsingel, si trova l’ex ufficio postale, costruito negli stessi anni e anch’esso scampato alla distruzione: è stato oggetto di un progetto di riconversione in spazi pubblici e hotel, quindi guardalo dall’esterno. Il Coolsingel, rifatto negli ultimi anni, è il grande viale che nel Novecento diventò il simbolo della Rotterdam ricostruita."
+   ],
+   "shoot": "La facciata con la torre dell’orologio inquadrata dalla piazza, e i dettagli delle sculture sopra gli ingressi. Per una foto pulita scatta dal lato opposto del Coolsingel; se vuoi inquadrare le persone chiedi il permesso, perché davanti all’ingresso c’è sorveglianza.",
+   "next": "Segui la Hoogstraat verso sud-est: dopo circa 600 m, in Korte Hoogstraat, trovi il Schielandshuis.",
+   "leg": "transit",
+   "label_pos": "above"
+  },
+  {
+   "id": "schielandshuis",
+   "name": "Het Schielandshuis",
+   "time": "13:00",
+   "dist": "0,6 km, 8 min",
+   "lat": 51.9189,
+   "lon": 4.4819,
+   "cid": "243864557506314118",
+   "hours": "Esterno sempre visibile (museo con orari propri)",
+   "price": "Esterno gratuito",
+   "photos": [
+    "https://lh3.googleusercontent.com/grass-cs/AABkmLdVdJkd7p5FHK23zZXu8VyYNgLLubZtuzh6N-KK5AxXGvkgWD3tSbhJeKKvgyFBKcqYZY2iZOhQXGA8I8t8fnlthaSBtxZCn1hLciMnY5NTc61yllUvDbYQ8M1s1h5nks1IV2HFWwqsp87k=s4800-w800-h600",
+    "https://lh3.googleusercontent.com/grass-cs/AABkmLcPxGDyDYjgIlb4kwPvrqelhA8OBmqAeuuXdIDUEGaDSbnCJJJqxOea8O4KUFTXg-J-5GO1Ol1e7K9Z6A66O3Zszvd8EPZzlRDzdjfVZoi8Qb490cO0CaGNi7YuMneHTKwxInoMiysuyZnZ=s4800-w800-h600"
+   ],
+   "text": [
+    "Il Schielandshuis è l’unico edificio del Seicento rimasto in piedi nel centro di Rotterdam: fu costruito tra il 1662 e il 1665 su progetto di Jacob Lois con Pieter Post, per ospitare l’amministrazione dello Schieland, l’ente che gestiva le dighe e le acque della regione. Le facciate in mattoni scuri con pietra chiara, gli archi e le finestre simmetriche sono tipici del classicismo olandese.",
+    "Nei secoli l’edificio ha cambiato più volte funzione: archivio comunale, museo Boijmans, accademia di belle arti e infine sede del museo di storia della città. Se oggi è visitabile all’interno e a quali condizioni non l’ho potuto verificare in modo affidabile: guarda l’esterno e, se ti interessa, controlla sul posto o sul sito ufficiale. Una recensione lo definisce la casa più antica della città, nascosta tra i grattacieli.",
+    "Il contrasto è proprio il suo fascino: questo piccolo palazzo storico resta schiacciato tra edifici di vetro e cemento ricostruiti dopo la guerra. Ti aiuta a immaginare quanto fosse diversa la città prima del 1940, quando la Hoogstraat era una strada di mercanti."
+   ],
+   "shoot": "La facciata in mattoni con le finestre simmetriche vista da Korte Hoogstraat, con il contrasto dei palazzi moderni sullo sfondo. Il contrasto vecchio-nuovo è il soggetto: inquadra in obliquo per includere i grattacieli.",
+   "next": "Prosegui verso est: in 400 m arrivi alla Laurenskerk, ben visibile da lontano.",
+   "label_pos": "left"
+  },
+  {
+   "id": "laurenskerk",
+   "name": "Laurenskerk",
+   "time": "13:15",
+   "dist": "0,4 km, 5 min",
+   "lat": 51.9216,
+   "lon": 4.4855,
+   "cid": "17413600776880824212",
+   "hours": "Di norma mar–sab 11:00–17:00; oggi risulta chiusa su Google Maps, controlla il sito ufficiale",
+   "price": "Esterno gratuito; interno circa 3–4 €; salita alla torre 7,50 € (sabato, orari fissi)",
+   "photos": [
+    "https://lh3.googleusercontent.com/grass-cs/AABkmLfATB4OJ2cVZqTo6ylIWy6UCS0X1LCsMAXEExGAWx0KOHHTZCz1svIXFUFE20NuImGl5HenJWkPzuNMoauWtZQLH65mwR9l1ukinPLdM4NJCRzX2wMuD0KsOycXBJwYGkiNC6vW=s4800-w800-h504",
+    "https://lh3.googleusercontent.com/grass-cs/AABkmLc66l22Bl-kXc1j-UvINAwFmqFUrV9ME3dZ1W0x4FA4t0atBo7L4nwA22Gj2MIGzVo4RDYbBbbVB9zHZ4kSbMPaXi9Tj-iRf2DzoEVc7p0SFNjdUVR_nDcxn4gXP9Bi3nzKEUEpNm7errjS=s4800-w800-h600"
+   ],
+   "text": [
+    "La Laurenskerk, o Grote Kerk, è l’unico edificio medievale di Rotterdam: tardo gotico, costruito tra il 1449 e il 1525. Nel bombardamento del 1940 il tetto crollò e rimasero in piedi soprattutto le mura e la torre; dopo la guerra fu restaurata e oggi è uno dei simboli della ricostruzione e della tenacia dei rotterdamesi.",
+    "All’interno si trovano una mostra permanente sulla storia della chiesa e della città, con audio e un film sui bombardamenti di Rotterdam, Coventry e Dresda. Per le ore e il biglietto controlla il sito ufficiale (laurenskerkrotterdam.nl): di solito è aperta dal martedì al sabato, ma su Google Maps oggi, sabato 31 ottobre, risulta chiusa e può essere riservata a eventi privati. Il biglietto d’ingresso costa pochi euro, quindi rientra nel tuo limite.",
+    "Da marzo a ottobre il sabato di norma partono salite guidate alla torre (7,50 €) a orari fissi; non è garantito che ci siano oggi. Se la chiesa è chiusa, accontentati dell’esterno: le grandi arcate e la torre si vedono bene dalla piazza, e a pochi passi trovi anche le vie della ricostruzione postbellica."
+   ],
+   "shoot": "La torre e la facciata dalla piazza Grotekerkplein, con il contrasto della chiesa antica e degli edifici moderni intorno. Se riesci a entrare, l’interno con le volte alte è il soggetto migliore; verifica prima se le foto sono permesse.",
+   "next": "È l’ora di pranzo. Il sabato accanto alla chiesa c’è il mercato di Binnenrotte: vedi la sezione dedicata al pranzo.",
+   "label_pos": "above"
+  },
+  {
+   "id": "witte-huis",
+   "name": "Witte Huis e Oude Haven",
+   "time": "14:20",
+   "dist": "0,8 km, 10 min",
+   "lat": 51.9189,
+   "lon": 4.4918,
+   "cid": "12516029052630049688",
+   "hours": "Esterno sempre visibile; il caffè al pianterreno apre alle 15:00",
+   "price": "Gratuito (esterno)",
+   "photos": [
+    "https://lh3.googleusercontent.com/grass-cs/AABkmLe185xaRRgry-eJfJaVaYHnYDBgrY6O1E_uI2Eyjz-5-HmhbV3jknXafM9VjaZeQOefaAGfZL-Nr23N_twgWwykCvg6NKYZfmOf3ZlIFYxkoM0iwRzLJ5oAtbF87l4YpGCoXFdjFQ=s4800-w800-h600",
+    "https://lh3.googleusercontent.com/grass-cs/AABkmLeeV7m8sz7mUByMwSvPQDiyS-WdDyUeYzAVaUv3__IlKYTIZ2AQbjqCyFyF2ip94l1noErr409lwZnLrKetl6hgo6KcW0BVqJTAHZOsef3zeB9C9nrp4Zp5xg21oIwH_kCQN8u1YcRmMKYc=s4800-w800-h600"
+   ],
+   "text": [
+    "Il Witte Huis, la “Casa Bianca”, fu completato nel 1898 su progetto di Willem Molenbroek ed è considerato uno dei primi grattacieli d’Europa: circa 43 metri di altezza, un record per l’epoca, tanto che per decenni fu l’edificio più alto dei Paesi Bassi. Fu tra i primi a usare il cemento armato e a essere dotato di ascensore. Costruito con cura, resistette al bombardamento del 1940, quando tutto il vecchio porto intorno fu raso al suolo.",
+    "Si affaccia sull’Oude Haven, il porto più antico di Rotterdam, scavato nel Trecento sulla riva della Maas. Qui la città nacque e si sviluppò come porto commerciale: oggi i moli ospitano barche storiche e terrazze di locali. Poco più in là il Wijnhaven, del 1613, e il Leuvehaven, il più antico porto artificiale della città (1609), ricordano quanto fosse intenso l’antico traffico di merci.",
+    "Il caffè-ristorante al piano terra del Witte Huis apre di pomeriggio, quindi per ora l’esterno basta. Attorno al porto, le Case Cubiche e il Markthal sono moderni e non fanno parte di questa tappa: se vuoi, guardali da fuori, ma il momento storico è questo edificio isolato tra i palazzi ricostruiti."
+   ],
+   "shoot": "Il Witte Huis intero dalla riva opposta dell’Oude Haven, con la facciata bianca e le barche in primo piano; con il cielo azzurro il bianco risalta. Per un effetto storico, inquadra il palazzo con alle spalle i grattacieli moderni.",
+   "next": "Segui il Leuvehaven verso sud fino all’Erasmusbrug: circa 1,6 km lungo l’acqua.",
+   "along": {
+    "zone": "Il tragitto scende lungo il porto più antico, il Wijnhaven e poi il Leuvehaven, dove si apre il Museo Marittimo con il suo molo e le navi storiche (aperto di norma dal martedì al sabato 10:00–17:00; il molo dalle 11:00). È un tratto in piano e in gran parte pedonale lungo l’acqua.",
+    "foto": [
+     "Le navi storiche ormeggiate nel Leuvehaven, con i grattacieli dietro.",
+     "Il contrasto tra le vecchie gru del porto e la skyline moderna sul fondo."
+    ]
+   }
+  },
+  {
+   "id": "erasmusbrug",
+   "name": "Erasmusbrug",
+   "time": "14:50",
+   "dist": "1,6 km, 20 min",
+   "lat": 51.909,
+   "lon": 4.4871,
+   "cid": "17598749991195008088",
+   "hours": "Sempre accessibile",
+   "price": "Gratuito",
+   "photos": [
+    "https://lh3.googleusercontent.com/grass-cs/AABkmLdZVP6RgD-5H_-M2Gj60MU7iJfHcaARGif9EKWyljEQzi7GCCDcP_0r3F_aBZwauELUWtMnwpUlN36KMzJJvnja7gVASfkcefVJl6i6Pmj10fIb5pNLGRrGQb_jLTZLdbeBYKEj=s4800-w800-h600",
+    "https://lh3.googleusercontent.com/grass-cs/AABkmLf_OtHIeKRur50x7_B0OWJ5mW_du0jqudaoRmY_y8ZlNl2DikkT8RL4cDeg6FNP_TBNiYxKPDrOY-sHSLKQgF38uJ77cqgoKCr29b3MEPw1-xmqRxYEkJDz_JxXmwurlqzCvsV8=s4800-w800-h600"
+   ],
+   "text": [
+    "L’Erasmusbrug, soprannominato “il Cigno” (De Zwaan), è il simbolo della Rotterdam moderna: un ponte strallato inaugurato nel 1996 che attraversa la Nieuwe Maas con un solo pilone inclinato e un fascio di cavi in acciaio. Collega il centro con Kop van Zuid, il quartiere che era l’area portuale e oggi è tra i più moderni della città. Dopo la parte antica della mattinata, è anche un salto netto di epoca.",
+    "Per i pedoni c’è una corsia separata da ciclisti e auto, e la traversata a piedi è lunga circa 800 metri: dalla metà del ponte si ha una vista aperta sul fiume, sulle gru, sulle navi e sullo skyline. Con il vento forte del fiume può essere freddo: porta una giacca.",
+    "Anche se la tappa è moderna, vale per il contesto: sotto il ponte passano i taxi d’acqua e le navi da crociera. Secondo i visitatori è una delle esperienze più apprezzate della città, soprattutto con la luce del tramonto."
+   ],
+   "shoot": "Il pilone e i cavi visti dal marciapiede pedonale, con la prospettiva che si restringe verso la riva sud. A metà ponte inquadra lo skyline lungo il fiume; con la luce obliqua del pomeriggio i riflessi sull’acqua sono migliori.",
+   "next": "Attraversa il ponte a piedi: sulla riva sud svolta a sinistra verso la punta della Wilhelminapier."
+  },
+  {
+   "id": "wilhelminapier",
+   "name": "Wilhelminapier e Hotel New York",
+   "time": "15:15",
+   "dist": "1,1 km, 15 min",
+   "lat": 51.9041,
+   "lon": 4.4846,
+   "cid": "16172110426659244097",
+   "hours": "Penisola sempre accessibile; l’hotel e il caffè tutti i giorni 9:00–24:00 (sabato)",
+   "price": "Gratuito (passeggiata esterna)",
+   "photos": [
+    "https://lh3.googleusercontent.com/grass-cs/AABkmLeqXvTTKpQl4Ide8_0m9dt9rodLm0Yvn1jkOE2lK0ee0clkR2VOKDVxP8dRfXI9f4hlj8GaVImNe-ywv48QezYkGLP_ac6CmGo4KTrxpKzqySEK-Er3XNnDk9I3PIWzlclHLWJs5twKqg0o=s4800-w800-h600",
+    "https://lh3.googleusercontent.com/grass-cs/AABkmLdtJbUDVQW0sio_8ime7rIRRpSVft5_qUHV6aOxW_aKJwbWMZI4DHcm8G-mByWtWMSTtFwa5U-fyfECEFM8oVHmyeDE3knoTA8aYL8a8J5fWl2iWU9KPfFxTdL6iIPSkOxf41bf=s4800-w800-h600"
+   ],
+   "text": [
+    "La Wilhelminapier è una penisola sul fiume che da molo di partenza dei grandi transatlantici è diventata uno dei distretti più scenografici della città. Qui si imbarcavano, tra Ottocento e Novecento, migliaia di emigranti diretti in America: per questo il porto di Rotterdam è legato alle storie di partenze e ritorni dell’emigrazione.",
+    "L’edificio storico è l’Hotel New York, l’ex sede della Holland America Line, la compagnia di navigazione, costruito nei primi del Novecento e sopravvissuto alla guerra. Dentro conserva mappe, modellini di navi e arredi legati alla storia della compagnia, e il grand café affacciato sul fiume è un luogo scenografico: per pochi euro puoi fermarti per un caffè. Nella zona si raggiunge a piedi, ma anche in taxi d’acqua (a pagamento).",
+    "Attorno si alzano le torri moderne, tra cui De Rotterdam di Rem Koolhaas (2013), una città verticale di blocchi sovrapposti, e la Montevideo. Il contrasto tra l’hotel antico e i grattacieli è esattamente il racconto di Rotterdam: una città che ha perso il suo centro storico e lo ha rimpiazzato con l’architettura più audace."
+   ],
+   "shoot": "L’Hotel New York dal molo con il fiume davanti, e De Rotterdam dalla sponda opposta della banchina per catturare i blocchi sovrapposti. In controluce di pomeriggio le torri di vetro riflettono il cielo.",
+   "next": "Prosegui lungo il Rijnhaven: attraversa il Rijnhavenbrug e raggiungi Katendrecht.",
+   "label_pos": "left"
+  },
+  {
+   "id": "katendrecht",
+   "name": "Katendrecht e Fenix",
+   "time": "15:50",
+   "dist": "1,2 km, 15 min",
+   "lat": 51.902,
+   "lon": 4.4868,
+   "cid": "4954963642959720708",
+   "hours": "Fenix Food Factory: sabato 12:00–23:00; il quartiere è sempre accessibile",
+   "price": "Ingresso libero; consumazioni a pagamento (prezzi alti secondo le recensioni)",
+   "photos": [
+    "https://lh3.googleusercontent.com/grass-cs/AABkmLeWcaJw2Dd-7cPgxbpomDSAaUKo9RPqwKBKKHaom3PMkoJJU2_vvd5uk9qinQsLfczS2xhMNCia2KbnRW4PHwfaaZX8CIJkGxbwjt8qPaKe9zaTjRqk35K-DVPbHDEcu51vtmJS0A=s4800-w800-h600",
+    "https://lh3.googleusercontent.com/grass-cs/AABkmLfp46zTBvZyAnBOEZl_HgCr3_NhYZ9ecxDU4HXWITQVbdVQUiAM3lsAuTvxFSYesAVdlKLrHlxztkRddPaewwBO3V7Eaw9SIcEaNPexASxxJ2PYX6qEoooQ_ztBGq9fzlQ1-sR0RpnepnBj=s4800-w800-h600"
+   ],
+   "text": [
+    "Katendrecht è un’altra penisola sul fiume, collegata a Kop van Zuid dal ponte Rijnhavenbrug. Per decenni fu un quartiere portuale povero e malfamato, noto anche come il piccolo quartiere cinese della città; negli ultimi anni è stato riqualificato e oggi è un’area di locali, caffè e botteghe indipendenti, intorno a Deliplein.",
+    "Il simbolo del rinnovamento è il Fenix Food Factory, un ex magazzino portuale trasformato in mercato coperto con birrifici artigianali, snack e prodotti locali; accanto, l’ex magazzino Fenix I è stato convertito in residenze e ospita un museo. Le recensioni lodano l’atmosfera e la scelta di birre, ma segnalano che il cibo è costoso: conviene una pausa con una bevanda, non un pranzo.",
+    "Cammina fino alla banchina per goderti lo skyline della Wilhelminapier e dell’Erasmusbrug dal lato opposto del fiume. È una tappa tranquilla, utile per riposare le gambe prima del tratto più lungo del pomeriggio."
+   ],
+   "shoot": "Lo skyline della Wilhelminapier e del ponte dalla banchina di Katendrecht, con la luce che scende verso il tramonto. All’interno del Fenix, i dettagli delle birre e dei banchi senza inquadrare i clienti.",
+   "next": "Torna verso Kop van Zuid e prosegui verso est, in direzione di De Hef e Noordereiland.",
+   "along": {
+    "zone": "Da Katendrecht il percorso risale lungo il Rijnhaven e il quartiere Kop van Zuid, con il Monumento ai bambini ebrei e il museo per bambini Villa Zebra, per arrivare al vecchio ponte ferroviario De Hef. Poi si attraversa l’acqua per raggiungere Noordereiland. È il tratto più lungo della giornata, circa 2,5 km.",
+    "foto": [
+     "De Hef, il vecchio ponte ferroviario a sollevamento, in primo piano con il fiume sotto.",
+     "Le case sulla banchina del Rijnhaven e le gru dei vecchi moli."
+    ]
+   }
+  },
+  {
+   "id": "noordereiland",
+   "name": "Noordereiland e Willemsbrug",
+   "time": "16:45",
+   "dist": "2,5 km, 35 min",
+   "lat": 51.9124,
+   "lon": 4.4929,
+   "cid": "4593061939614059894",
+   "hours": "Quartiere sempre accessibile",
+   "price": "Gratuito",
+   "photos": [
+    "https://lh3.googleusercontent.com/grass-cs/AABkmLcFJTtpquxF2PuiAramcoAs1jQyO5sNBOGYslzSdp0usYGGWgEjRTCAvfYDMbvveNfjZFoe0k3q8fy94nSTD4Cy1GAEZUjt73dR_uHDq8Q295k06Zja2h4itUlghwTmjpRxgAlM=s4800-w800-h600",
+    "https://lh3.googleusercontent.com/grass-cs/AABkmLd6VLJ9tk7i-Tm3PxbURfl5OqB_ERjfXKx10nCbxWL44vReCPUn__GV_lJRIwBuJEk3pwX-tMhg1AAkK-5Rgc2mR9-zXhX8Vd0DxxpGrxOhT8g_hkVQTtw5x-cjx_PsJQnfdGJp=s4800-w800-h600"
+   ],
+   "text": [
+    "Noordereiland, l’“isola del nord”, è una piccola isola residenziale tra la Nieuwe Maas e il Koningshaven, il canale scavato nell’Ottocento che la separò dalla terraferma. Il quartiere, con case a schiera e viali alberati, ha un’aria raccolta e quasi di paese, molto diversa dalle torri della riva opposta, e dà la sensazione di una Rotterdam più quieta.",
+    "Dal bordo dell’isola si vede De Hef, il ponte ferroviario a sollevamento, e all’estremità il Willemsbrug, il grande ponte rosso del 1981 che ti riporta sulla riva nord, nei pressi dell’Oude Haven. È il punto in cui chiudi il giro delle isole: Kop van Zuid, Katendrecht e Noordereiland.",
+    "Con la luce di fine giornata, il fiume e i ponti cambiano colore: a fine ottobre il tramonto è intorno alle 17, quindi quest’ultimo tratto cade nel crepuscolo. Tieni a portata di mano la giacca e controlla la strada: a quest’ora le piste ciclabili sono trafficate."
+   ],
+   "shoot": "Il Willemsbrug rosso con il fiume e i riflessi, preferibilmente nell’ora blu subito dopo il tramonto; e le case dell’isola con la skyline sullo sfondo, dal bordo del molo. De Hef è un soggetto classico in controluce.",
+   "next": "Attraversa il Willemsbrug e prosegui per 700 m fino alla stazione Blaak: da lì il rientro è in metro (vedi la sezione dedicata)."
+  }
+ ]
+}
+<<<FINE FILE>>>
+

@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Young+Serif&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --tile:#F5F7FB; --paper:#FFFFFF; --ink:#16213E; --muted:#56607A; --line:#D5DBEA;
+  --delft:#23408E; --delft-soft:#E4EAF7; --orange:#E8731A; --canal:#CFE0EE;
+  --serif:"Young Serif",Georgia,"Times New Roman",serif;
+  --sans:"Instrument Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root{--tile:#0F1730; --paper:#16213E; --ink:#EEF1FA; --muted:#A5AFCB; --line:#2A3760;
+    --delft:#8DA8F0; --delft-soft:#1D2B55; --orange:#F2913F; --canal:#1B2C57;}
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:64px}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{margin:0;background:var(--tile);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.6}
+a{color:var(--delft)}
+a:focus-visible,button:focus-visible{outline:3px solid var(--orange);outline-offset:2px}
+.wrap{max-width:980px;margin:0 auto;padding:0 20px}
+header.hero{background:var(--delft);color:#fff;padding:56px 0 44px}
+@media (prefers-color-scheme:dark){header.hero{background:#1B2C57}}
+.hero h1{font-family:var(--serif);font-weight:400;font-size:clamp(2.1rem,6vw,3.8rem);line-height:1.08;margin:0 0 14px;max-width:16em}
+.hero p{margin:0;max-width:38em;color:#DCE4FA;font-size:1.05rem}
+.facts{display:flex;flex-wrap:wrap;gap:10px 28px;margin-top:26px;color:#fff;font-weight:500}
+.facts span b{font-family:var(--serif);font-weight:400;font-size:1.5rem;margin-right:6px}
+nav.jump{position:sticky;top:0;z-index:5;background:var(--paper);border-bottom:1px solid var(--line)}
+nav.jump ul{list-style:none;margin:0;padding:8px 20px;display:flex;gap:6px;overflow-x:auto;max-width:980px;margin-inline:auto}
+nav.jump a{display:block;white-space:nowrap;padding:6px 12px;border-radius:999px;text-decoration:none;font-size:.9rem;font-weight:500;color:var(--ink);border:1px solid var(--line)}
+nav.jump a:hover{background:var(--delft-soft)}
+section{padding:44px 0 8px}
+h2{font-family:var(--serif);font-weight:400;font-size:clamp(1.6rem,4vw,2.2rem);line-height:1.15;margin:0 0 18px}
+.map-card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:14px}
+#map{width:100%;height:auto;display:block;max-height:78vh}
+.gmap{width:100%;height:min(70vh,560px);border:0;border-radius:10px;display:block;background:var(--canal)}
+.map-card .btn{margin:10px 8px 0 0}
+.map-note{font-size:.88rem;color:var(--muted);margin:10px 4px 0}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+.tabs button,.chips button{font:inherit;font-size:.92rem;font-weight:600;padding:8px 16px;border-radius:999px;border:1px solid var(--line);background:var(--paper);color:var(--ink);cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--delft);border-color:var(--delft);color:#fff}
+@media (prefers-color-scheme:dark){.tabs button[aria-selected="true"]{color:#0F1730}}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+.chips button{padding:4px 12px;font-size:.84rem;font-weight:500}
+.chips button[aria-pressed="true"]{background:var(--delft-soft);border-color:var(--delft)}
+.gm-sub{font-size:1rem;color:var(--delft);margin:22px 0 2px}
+table{width:100%;border-collapse:collapse;background:var(--paper);border:1px solid var(--line);border-radius:14px;overflow:hidden;font-size:.97rem}
+.tw{overflow-x:auto;border-radius:14px}
+th,td{padding:11px 14px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:var(--delft-soft);font-weight:600}
+tr:last-child td{border-bottom:0}
+td.t{font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:600}
+.stop{padding:48px 0 12px;border-top:1px solid var(--line);margin-top:36px}
+.stop:first-of-type{margin-top:0}
+.stop h2{display:flex;align-items:center;gap:14px}
+.stop h2{flex-wrap:wrap;row-gap:8px}
+.stop h2 .ttl{min-width:0}
+.btn-sm{margin:0;padding:6px 14px;font-size:.82rem;font-family:var(--sans);line-height:1.4;white-space:nowrap}
+.num{flex:none;display:inline-grid;place-items:center;width:42px;height:42px;border-radius:50%;background:var(--orange);color:#fff;font-family:var(--sans);font-weight:600;font-size:1.1rem}
+.photos{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 14px}
+.photos figure{margin:0;background:var(--canal);border-radius:12px;overflow:hidden;aspect-ratio:4/3}
+.photos img{width:100%;height:100%;object-fit:cover;display:block}
+.credit{font-size:.82rem;color:var(--muted);margin:0 0 16px}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:0 0 20px}
+.meta div{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-size:.93rem}
+.meta dt{font-weight:600;color:var(--delft);font-size:.85rem;margin:0 0 2px}
+.meta dd{margin:0}
+.stop p{max-width:66ch}
+.shoot{background:var(--paper);border:1px solid var(--line);border-left:4px solid var(--delft);border-radius:0 10px 10px 0;padding:12px 16px;max-width:66ch}
+.next{background:var(--delft-soft);border-left:4px solid var(--orange);border-radius:0 10px 10px 0;padding:12px 16px;max-width:66ch}
+.btn{display:inline-block;margin-top:6px;padding:9px 16px;border-radius:999px;background:var(--delft);color:#fff;text-decoration:none;font-weight:600;font-size:.93rem}
+@media (prefers-color-scheme:dark){.btn{color:#0F1730}}
+.btn:hover{filter:brightness(1.1)}
+ul.tips{padding-left:1.2em;max-width:66ch}
+ul.tips li{margin:6px 0}
+.along{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:12px 16px;max-width:66ch;margin:14px 0}.along h3{margin:0 0 6px;font-size:1rem;color:var(--delft)}.along p{margin:0 0 8px}.lunch{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+footer{padding:36px 0 56px;color:var(--muted);font-size:.9rem}
+.brandline{display:flex;align-items:center;gap:10px}
+.brandline img{display:block;height:36px;width:auto;border-radius:6px}
+.brandline span{font-size:.78rem;opacity:.85}
+header.hero .brandline{margin-bottom:22px;color:#DCE4FA}
+footer .brandline{margin-top:22px;opacity:.75}
+footer .brandline img{height:20px;border-radius:4px}
+footer .brandline span{font-size:.72rem;opacity:1}
+@media (max-width:560px){body{font-size:16px}.photos{grid-template-columns:1fr}}
+@media print{nav.jump{display:none}.stop{break-inside:avoid}}
+</style>
+</head>
+<body>
+
+<header class="hero"><div class="wrap brandline"><img src="https://cimento.it/tour/logoABS.png" alt="ABS - Antonio Billeci Solutions" onerror="this.style.display='none'"><span>ABS - Utility e Software per uso personale</span></div><div class="wrap" id="hero"></div></header>
+
+<nav class="jump" aria-label="Vai alla tappa"><ul id="jump"></ul></nav>
+
+<main class="wrap">
+
+<section id="google-maps">
+  <h2>Il percorso su Google Maps</h2>
+  <div class="map-card" id="gm-card"></div>
+</section>
+
+<section id="mappa">
+  <h2>Il percorso in schema</h2>
+  <div class="map-card">
+    <svg id="map" role="img"></svg>
+    <p class="map-note" id="map-note"></p>
+  </div>
+</section>
+
+<section id="riepilogo">
+  <h2>In sintesi</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Ora</th><th>Tappa</th><th>Dalla precedente</th></tr></thead>
+    <tbody id="summary"></tbody>
+  </table></div>
+  <p class="credit" style="margin-top:10px" id="summary-note"></p>
+</section>
+
+<div id="stops"></div>
+
+<section id="pranzo" hidden></section>
+<section id="rientro" hidden></section>
+<section id="consigli" hidden></section>
+
+</main>
+
+<footer><div class="wrap" id="footer"></div><div class="wrap brandline"><img src="https://cimento.it/tour/logoABS.png" alt="ABS - Antonio Billeci Solutions" onerror="this.style.display='none'"><span>ABS - Utility e Software per uso personale</span></div></footer>
+
+<script id="guide-data" type="application/json">__GUIDE_JSON__</script>
+<script>
+const D = JSON.parse(document.getElementById("guide-data").textContent);
+const STOPS = D.stops;
+const $ = s => document.querySelector(s);
+const el = (t, a={}, h="") => { const e=document.createElement(t); for(const k in a) e.setAttribute(k,a[k]); e.innerHTML=h; return e; };
+// Testo semplice -> HTML sicuro; **grassetto** permesso
+const esc = t => String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>");
+const short = s => s.name.split(" (")[0].split(" e ")[0];
+const ll = s => s.lat.toFixed(4)+","+s.lon.toFixed(4);
+const mapsLink = s => s.url || `https://maps.google.com/?cid=${s.cid}`;
+const byId = id => STOPS.find(s=>s.id===id);
+const isTransit = s => s.leg==="transit";
+
+document.documentElement.lang = D.lang || "it";
+document.title = D.title;
+
+// Hero
+$("#hero").innerHTML = `<h1>${esc(D.h1)}</h1><p>${esc(D.intro)}</p><div class="facts">${(D.facts||[]).map(f=>`<span><b>${esc(f.v)}</b>${esc(f.l||"")}</span>`).join("")}</div>`;
+
+// Mappa schematica: testo
+$("#map").setAttribute("aria-label", D.map_aria || ("Mappa schematica del percorso con le "+STOPS.length+" tappe"));
+$("#map-note").textContent = (D.map && D.map.note) || "Mappa schematica in scala approssimata: le linee uniscono le tappe in ordine e non seguono le strade. Ogni tappa ha il link a Google Maps per la navigazione reale.";
+
+// Google Maps: mappa dell'intero percorso (a piedi / mezzi pubblici / auto)
+(function(){
+  const G = D.google || {};
+  const MODES = {
+    walking:{label:"A piedi", flag:"w", note:"Tutto il giro a piedi, nell'ordine di visita. Con più di 10 punti Google Maps divide il percorso in parti: scegli la parte qui sopra."},
+    transit:{label:"Mezzi pubblici", flag:"r", note:"Con i mezzi pubblici Google Maps non accetta tappe intermedie: ogni spostamento tra due tappe è una scheda a sé (scegli la coppia qui sopra). Controlla linee e orari reali nel giorno della visita."},
+    driving:{label:"Auto", flag:"d", note:"Percorso in auto da una tappa all'altra. Controlla zone a traffico limitato, divieti di sosta e parcheggi vicino alle tappe: non sono verificati."}
+  };
+  const notes = G.mode_notes || {};
+  const num = s => STOPS.indexOf(s)+1;
+  const dirUrl = (pts,mode) => {
+    const via = pts.slice(1,-1).map(ll).join("|");
+    return `https://www.google.com/maps/dir/?api=1&origin=${ll(pts[0])}&destination=${ll(pts[pts.length-1])}`+(via&&mode!=="transit"?`&waypoints=${encodeURIComponent(via)}`:"")+`&travelmode=${mode}`;
+  };
+  const embedUrl = (pts,mode) => `https://www.google.com/maps?output=embed&dirflg=${MODES[mode].flag}&saddr=${ll(pts[0])}&daddr=${pts.slice(1).map(ll).join("+to:")}`;
+
+  // Punti dell'intero percorso: tutte le tappe (o G.route_ids) e il rientro alla partenza
+  let route = (G.route_ids ? G.route_ids.map(byId) : STOPS).filter(Boolean);
+  if(D.return_leg!==false && route.length>1) route = route.concat([route[0]]);
+  route = route.filter((s,i)=>i===0 || s!==route[i-1]);
+
+  const segments = mode => {
+    const out = [];
+    if(mode==="transit"){
+      for(let i=0;i<route.length-1;i++) out.push({pts:[route[i],route[i+1]], label:`${num(route[i])} → ${num(route[i+1])}`, title:`${short(route[i])} → ${short(route[i+1])}`});
+    } else {
+      for(let k=0;k<route.length-1;k+=10){
+        const pts = route.slice(k,k+11);
+        out.push({pts, label:`Parte ${k/10+1}: ${num(pts[0])} → ${num(pts[pts.length-1])}`, title:`${short(pts[0])} → ${short(pts[pts.length-1])}`});
+      }
+    }
+    return out;
+  };
+
+  const card = $("#gm-card");
+  const tabs = el("div",{class:"tabs",role:"tablist","aria-label":"Come ti sposti"});
+  const panels = el("div");
+  card.append(tabs, panels);
+  const modes = (G.modes||["walking","transit","driving"]).filter(m=>MODES[m] && segments(m).length);
+  const ui = {};
+
+  const activate = (m, focus) => {
+    modes.forEach(k=>{
+      const on = k===m;
+      ui[k].tab.setAttribute("aria-selected", on);
+      ui[k].tab.tabIndex = on ? 0 : -1;
+      ui[k].panel.hidden = !on;
+    });
+    if(!ui[m].ready){ ui[m].show(0); ui[m].ready = true; }
+    if(focus) ui[m].tab.focus();
+  };
+
+  modes.forEach((m,mi)=>{
+    const M = MODES[m], segs = segments(m);
+    const tab = el("button",{type:"button",role:"tab",id:"gm-tab-"+m,"aria-controls":"gm-panel-"+m,"aria-selected":"false",tabindex:"-1"},esc(M.label));
+    const panel = el("div",{role:"tabpanel",id:"gm-panel-"+m,"aria-labelledby":"gm-tab-"+m,hidden:""});
+    const chips = segs.length>1 ? el("div",{class:"chips",role:"group","aria-label":m==="transit"?"Spostamento tra due tappe":"Parte del percorso"}) : null;
+    const frame = el("iframe",{class:"gmap",loading:"lazy",referrerpolicy:"no-referrer-when-downgrade",allowfullscreen:""});
+    const open = el("a",{class:"btn",target:"_blank",rel:"noopener"});
+    const show = i => {
+      const sg = segs[i];
+      frame.src = embedUrl(sg.pts,m);
+      frame.title = `Google Maps, ${M.label.toLowerCase()}: ${sg.title}`;
+      open.href = dirUrl(sg.pts,m);
+      open.textContent = segs.length>1 ? `Apri in Google Maps: ${sg.label}` : `Apri in Google Maps · ${M.label}`;
+      if(chips) [...chips.children].forEach((c,k)=>c.setAttribute("aria-pressed", k===i));
+    };
+    if(chips) segs.forEach((sg,i)=>{
+      const c = el("button",{type:"button","aria-pressed":"false",title:sg.title},esc(sg.label));
+      c.addEventListener("click",()=>show(i));
+      chips.append(c);
+    });
+    if(chips) panel.append(chips);
+    panel.append(frame, open, el("p",{class:"map-note"},esc(notes[m]||M.note)));
+    tab.addEventListener("click",()=>activate(m));
+    tab.addEventListener("keydown",e=>{
+      const d = e.key==="ArrowRight"?1 : e.key==="ArrowLeft"?-1 : 0;
+      if(d){ e.preventDefault(); activate(modes[(mi+d+modes.length)%modes.length], true); }
+    });
+    tabs.append(tab); panels.append(panel);
+    ui[m] = {tab, panel, show, ready:false};
+  });
+  if(modes.length) activate(modes.includes(G.default_mode)?G.default_mode:modes[0]);
+  card.append(el("p",{class:"map-note"},esc(G.general_note||"Le mappe si caricano da internet. Se quella incorporata non compare, usa il pulsante: si apre Google Maps.")));
+
+  // Percorso della guida (a piedi + mezzi pubblici sui tratti lunghi e per il rientro)
+  let btns = G.buttons;
+  if(!btns){
+    btns = [];
+    let start = -1;
+    for(let i=1;i<STOPS.length;i++){ if(!isTransit(STOPS[i])){ start=i-1; break; } }
+    if(start>=0){
+      let end=start+1; while(end+1<STOPS.length && !isTransit(STOPS[end+1])) end++;
+      const run = STOPS.slice(start,end+1);
+      for(let k=0;k<run.length-1;k+=9){
+        const chunk = run.slice(k,k+10);
+        btns.push({label: run.length>10 ? `Percorso a piedi, parte ${k/9+1}` : "Apri il percorso a piedi in Google Maps", from_id:chunk[0].id, to_id:chunk[chunk.length-1].id, via_ids:chunk.slice(1,-1).map(x=>x.id), mode:"walking"});
+      }
+    }
+    for(let i=1;i<STOPS.length;i++){
+      if(isTransit(STOPS[i])){ let j=i; while(j+1<STOPS.length && isTransit(STOPS[j+1])) j++;
+        btns.push({label:`Andata in ${D.transit_label||"mezzi"}: ${short(STOPS[i-1])} → ${short(STOPS[j])}`, from_id:STOPS[i-1].id, to_id:STOPS[j].id, mode:"transit"}); i=j; }
+    }
+    if(D.return_leg!==false && STOPS.length>1){
+      btns.push({label:`Rientro: ${short(STOPS[STOPS.length-1])} → ${short(STOPS[0])}`, from_id:STOPS[STOPS.length-1].id, to_id:STOPS[0].id, mode:"transit"});
+    }
+  }
+  if(G.buttons || STOPS.some(isTransit)){
+    const links = btns.map(b=>{
+      const o=byId(b.from_id), d=byId(b.to_id);
+      const pts=[o].concat((b.via_ids||[]).map(byId),[d]);
+      return `<a class="btn" target="_blank" rel="noopener" href="${dirUrl(pts,b.mode||"walking").replace(/&/g,"&amp;")}">${esc(b.label)}</a>`;
+    }).join("");
+    card.append(el("h3",{class:"gm-sub"},"Il percorso della guida: a piedi + mezzi pubblici"));
+    if(G.note) card.append(el("p",{class:"map-note"},esc(G.note)));
+    card.append(el("div",{},links));
+  }
+})();
+
+$("#summary-note").textContent = D.summary_note || "Distanze stimate a piedi sul percorso più diretto. Gli orari sono indicativi e lasciano margine per soste, foto e pranzo.";
+
+// Indice, riepilogo, sezioni
+STOPS.forEach((s,i)=>{
+  $("#jump").append(el("li",{},`<a href="#${s.id}">${i+1}. ${esc(short(s))}</a>`));
+  $("#summary").append(el("tr",{},`<td class="t">${esc(s.time)}</td><td><a href="#${s.id}">${esc(s.name)}</a></td><td>${esc(s.dist)}</td>`));
+  const photos = (s.photos||[]).map((u,k)=>`<figure><img src="${esc(u)}" alt="${esc(s.name)}, foto ${k+1}" loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('figure').style.display='none'"></figure>`).join("");
+  const sec = el("section",{id:s.id,class:"stop"});
+  sec.innerHTML = `
+    <h2><span class="num" aria-hidden="true">${i+1}</span><span class="ttl">${esc(s.name)}</span><a class="btn btn-sm" href="${esc(mapsLink(s))}" target="_blank" rel="noopener">Apri su Google Maps</a></h2>
+    ${(s.photos||[]).length?`<div class="photos">${photos}</div><p class="credit">${esc(D.photo_credit||"Foto: Google Maps, contributi degli utenti.")}</p>`:(s.photo_note?`<p class="credit">${esc(s.photo_note)}</p>`:"")}
+    <dl class="meta">
+      <div><dt>Arrivo previsto</dt><dd>${esc(s.time)} (${esc(s.dist)})</dd></div>
+      <div><dt>Orari</dt><dd>${esc(s.hours)}</dd></div>
+      <div><dt>Ingresso</dt><dd>${esc(s.price)}</dd></div>
+      <div><dt>Posizione</dt><dd>${s.lat.toFixed(4)}, ${s.lon.toFixed(4)}</dd></div>
+    </dl>
+    ${s.text.map(p=>`<p>${esc(p)}</p>`).join("")}
+    <p class="shoot"><strong>Cosa fotografare.</strong> ${esc(s.shoot)}</p>
+    <p class="next"><strong>Come proseguire.</strong> ${esc(s.next)}</p>
+    ${s.along?`<div class="along"><h3>Lungo la strada</h3><p>${esc(s.along.zone)}</p><p><strong>Punti fotografici.</strong></p><ul class="tips">${s.along.foto.map(f=>`<li>${esc(f)}</li>`).join("")}</ul></div>`:""}`;
+  $("#stops").append(sec);
+});
+
+// Sezioni finali opzionali
+if(D.lunch){ const s=$("#pranzo"); s.hidden=false; s.innerHTML=`<h2>${esc(D.lunch.title||"Dove pranzare spendendo poco")}</h2><p>${esc(D.lunch.intro||"")}</p><dl class="meta lunch">${D.lunch.items.map(i=>`<div><dt>${esc(i.t)}</dt><dd>${esc(i.d)}</dd></div>`).join("")}</dl>`; }
+if(D.return){ const s=$("#rientro"); s.hidden=false; s.innerHTML=`<h2>${esc(D.return.title||"Rientro con i mezzi pubblici")}</h2><p>${esc(D.return.lead||"")}</p><ul class="tips">${(D.return.items||[]).map(i=>`<li>${esc(i)}</li>`).join("")}</ul>`; }
+if(D.tips){ const s=$("#consigli"); s.hidden=false; s.innerHTML=`<h2>Consigli pratici</h2><ul class="tips">${D.tips.map(i=>`<li>${esc(i)}</li>`).join("")}</ul>`; }
+$("#footer").textContent = D.footer || "Foto: Google Maps, contributi degli utenti. Le immagini si caricano da internet: se sei offline non compaiono. Orari e prezzi possono cambiare.";
+
+// Mappa schematica
+(function(){
+  const pad=70, W=720;
+  const lats=STOPS.map(s=>s.lat), lons=STOPS.map(s=>s.lon);
+  const midLat=(Math.min(...lats)+Math.max(...lats))/2;
+  const k=Math.cos(midLat*Math.PI/180);
+  const minLat=Math.min(...lats)-0.002, maxLat=Math.max(...lats)+0.002;
+  const minLon=Math.min(...lons)-0.003, maxLon=Math.max(...lons)+0.003;
+  const spanX=(maxLon-minLon)*k, spanY=maxLat-minLat;
+  const H=Math.max(380,Math.min(780,Math.round((W-2*pad)*spanY/spanX+2*pad)));
+  const sc=Math.min((W-2*pad)/spanX,(H-2*pad)/spanY);
+  const ox=(W-spanX*sc)/2, oy=(H-spanY*sc)/2;
+  const Pll=(lat,lon)=>[ox+(lon-minLon)*k*sc, oy+(maxLat-lat)*sc];
+  const pts=STOPS.map(s=>Pll(s.lat,s.lon));
+  const svg=$("#map"); svg.setAttribute("viewBox",`0 0 ${W} ${H}`);
+  let h=`<rect width="${W}" height="${H}" rx="10" fill="var(--canal)"/>`;
+  const wt=D.map && D.map.water;
+  if(wt && wt.points && wt.points.length>1){
+    const w=wt.points.map(p=>Pll(p[0],p[1]));
+    h+=`<polyline points="${w.map(p=>p.join(",")).join(" ")}" fill="none" stroke="var(--tile)" stroke-width="22" stroke-linecap="round" stroke-linejoin="round" opacity=".85"/>`;
+    if(wt.label && wt.label_at){ const lm=Pll(wt.label_at[0],wt.label_at[1]); h+=`<text x="${lm[0]}" y="${lm[1]}" font-size="13" fill="var(--muted)" font-style="italic" font-family="var(--sans)">${esc(wt.label)}</text>`; }
+  }
+  const dashed=(a,b)=>`<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="var(--delft)" stroke-width="3.5" stroke-dasharray="3 9" stroke-linecap="round"/>`;
+  for(let i=1;i<STOPS.length;i++){
+    const a=pts[i-1], b=pts[i];
+    h+= isTransit(STOPS[i]) ? dashed(a,b) : `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="var(--orange)" stroke-width="4" stroke-linecap="round"/>`;
+  }
+  if(D.return_leg!==false && STOPS.length>1){
+    const a=pts[pts.length-1], b=pts[0];
+    h+=dashed(a,b)+`<text x="${(a[0]+b[0])/2+10}" y="${(a[1]+b[1])/2-6}" font-size="12.5" fill="var(--delft)" font-weight="600" font-family="var(--sans)">${esc(D.return_leg_label||"rientro")}</text>`;
+  }
+  STOPS.forEach((s,i)=>{
+    const [x,y]=pts[i];
+    let tx=x+22, ty=y+5, anchor="start";
+    const pos=s.label_pos||"right";
+    if(pos==="left"){tx=x-22;anchor="end";}
+    if(pos==="above"){tx=x;ty=y-24;anchor="middle";}
+    if(pos==="below"){tx=x;ty=y+36;anchor="middle";}
+    h+=`<a href="#${s.id}"><circle cx="${x}" cy="${y}" r="15" fill="var(--delft)" stroke="var(--paper)" stroke-width="3"/>
+    <text x="${x}" y="${y+5}" text-anchor="middle" font-size="15" font-weight="700" fill="#fff" font-family="var(--sans)">${i+1}</text>
+    <text x="${tx}" y="${ty}" text-anchor="${anchor}" font-size="15" font-weight="600" fill="var(--ink)" font-family="var(--sans)" paint-order="stroke" stroke="var(--canal)" stroke-width="4">${esc(short(s))}</text></a>`;
+  });
+  h+=`<g transform="translate(${W-44},44)"><circle r="20" fill="var(--paper)" stroke="var(--line)"/><path d="M0,-13 L6,8 L0,4 L-6,8 Z" fill="var(--delft)"/><text y="-22" text-anchor="middle" font-size="11" fill="var(--muted)" font-family="var(--sans)" font-weight="600">N</text></g>`;
+  h+=`<g transform="translate(24,${H-30})" font-family="var(--sans)" font-size="13" fill="var(--ink)"><line x1="0" y1="0" x2="30" y2="0" stroke="var(--orange)" stroke-width="4" stroke-linecap="round"/><text x="38" y="4">a piedi</text><line x1="110" y1="0" x2="140" y2="0" stroke="var(--delft)" stroke-width="3.5" stroke-dasharray="3 9" stroke-linecap="round"/><text x="148" y="4">${esc(D.transit_label||"mezzi")}</text></g>`;
+  svg.innerHTML=h;
+})();
+</script>
+</body>
+</html>
